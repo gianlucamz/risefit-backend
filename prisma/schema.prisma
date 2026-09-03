@@ -28,6 +28,13 @@ enum OrderStatus {
   CANCELADO
 }
 
+enum EventParticipantStatus {
+  INSCRITO
+  CANCELADO
+  PRESENTE
+  AUSENTE
+}
+
 model User {
   id             BigInt   @id @default(autoincrement())
   nome           String   @db.VarChar(100)
@@ -42,6 +49,7 @@ model User {
   profissional Professional?
   assinaturas  Subscription[]
   pedidos      Order[]
+  eventos      EventParticipant[]
 
   @@index([cargo])
   @@map("usuarios")
@@ -183,4 +191,35 @@ model OrderProduct {
   @@unique([pedidoId, produtoId])
   @@index([produtoId])
   @@map("pedidos_produtos")
+}
+
+model Event {
+  id            BigInt   @id @default(autoincrement())
+  titulo        String   @db.VarChar(200)
+  descricao     String?  @db.Text
+  local         String   @db.VarChar(200)
+  horarioInicio DateTime @map("horario_inicio")
+  horarioFim    DateTime @map("horario_fim")
+  capacidade    Int
+  criadoEm      DateTime @default(now()) @map("criado_em")
+  atualizadoEm  DateTime @updatedAt @map("atualizado_em")
+
+  participantes EventParticipant[]
+
+  @@map("eventos")
+}
+
+model EventParticipant {
+  usuarioId    BigInt                 @map("usuarios_id")
+  eventoId     BigInt                 @map("eventos_id")
+  registradoEm DateTime               @default(now()) @map("registrado_em")
+  status       EventParticipantStatus @default(INSCRITO)
+
+  usuario User  @relation(fields: [usuarioId], references: [id])
+  evento  Event @relation(fields: [eventoId], references: [id])
+
+  @@id([usuarioId, eventoId])
+  @@index([eventoId])
+  @@index([status])
+  @@map("participantes_eventos")
 }
