@@ -13,18 +13,26 @@ enum Cargo {
   ADMIN
 }
 
+enum SubscriptionStatus {
+  ATIVA
+  CANCELADA
+  EXPIRADA
+  PENDENTE
+}
+
 model User {
   id             BigInt   @id @default(autoincrement())
   nome           String   @db.VarChar(100)
   email          String   @unique @db.VarChar(150)
   senha          String   @db.VarChar(255)
-  dataNascimento DateTime @db.Date
+  dataNascimento DateTime @db.Date @map("data_nascimento")
   telefone       String   @db.VarChar(20)
   cargo          Cargo    @default(ALUNO)
   criadoEm       DateTime @default(now()) @map("criado_em")
   atualizadoEm   DateTime @updatedAt @map("atualizado_em")
 
   profissional Professional?
+  assinaturas  Subscription[]
 
   @@index([cargo])
   @@map("usuarios")
@@ -40,7 +48,81 @@ model Professional {
   criadoEm       DateTime @default(now()) @map("criado_em")
   atualizadoEm   DateTime @updatedAt @map("atualizado_em")
 
-  usuario User @relation(fields: [usuarioId], references: [id])
+  usuario  User                   @relation(fields: [usuarioId], references: [id])
+  servicos ProfessionalService[]
 
   @@map("profissionais")
+}
+
+model Service {
+  id            BigInt   @id @default(autoincrement())
+  nome          String   @db.VarChar(200)
+  descricao     String?  @db.Text
+  ativo         Boolean  @default(true)
+  criadoEm      DateTime @default(now()) @map("criado_em")
+  atualizadoEm  DateTime @updatedAt @map("atualizado_em")
+
+  profissionais ProfessionalService[]
+  planos        PlanService[]
+
+  @@map("servicos")
+}
+
+model ProfessionalService {
+  profissionalId BigInt   @map("profissionais_id")
+  servicoId      BigInt   @map("servicos_id")
+  criadoEm       DateTime @default(now()) @map("criado_em")
+
+  profissional Professional @relation(fields: [profissionalId], references: [id])
+  servico      Service      @relation(fields: [servicoId], references: [id])
+
+  @@id([profissionalId, servicoId])
+  @@map("profissionais_servicos")
+}
+
+model Plan {
+  id           BigInt   @id @default(autoincrement())
+  nome         String   @db.VarChar(100)
+  descricao    String?  @db.Text
+  preco        Decimal  @db.Decimal(8, 2)
+  duracaoMeses Int      @map("duracao_meses")
+  ativo        Boolean  @default(true)
+  criadoEm     DateTime @default(now()) @map("criado_em")
+  atualizadoEm DateTime @updatedAt @map("atualizado_em")
+
+  assinaturas Subscription[]
+  servicos    PlanService[]
+
+  @@map("planos")
+}
+
+model PlanService {
+  planoId   BigInt   @map("planos_id")
+  servicoId BigInt   @map("servicos_id")
+  criadoEm  DateTime @default(now()) @map("criado_em")
+
+  plano   Plan    @relation(fields: [planoId], references: [id])
+  servico Service @relation(fields: [servicoId], references: [id])
+
+  @@id([planoId, servicoId])
+  @@map("planos_servicos")
+}
+
+model Subscription {
+  id            BigInt             @id @default(autoincrement())
+  usuarioId     BigInt             @map("usuarios_id")
+  planoId       BigInt             @map("planos_id")
+  dataInicio    DateTime           @db.Date @map("data_inicio")
+  dataFim       DateTime?          @db.Date @map("data_fim")
+  status        SubscriptionStatus @default(PENDENTE)
+  criadoEm      DateTime           @default(now()) @map("criado_em")
+  atualizadoEm  DateTime           @updatedAt @map("atualizado_em")
+
+  usuario User @relation(fields: [usuarioId], references: [id])
+  plano   Plan @relation(fields: [planoId], references: [id])
+
+  @@index([usuarioId])
+  @@index([planoId])
+  @@index([status])
+  @@map("assinaturas")
 }
