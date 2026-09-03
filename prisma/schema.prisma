@@ -20,6 +20,14 @@ enum SubscriptionStatus {
   PENDENTE
 }
 
+enum OrderStatus {
+  PENDENTE
+  CONFIRMADO
+  ENVIADO
+  ENTREGUE
+  CANCELADO
+}
+
 model User {
   id             BigInt   @id @default(autoincrement())
   nome           String   @db.VarChar(100)
@@ -33,6 +41,7 @@ model User {
 
   profissional Professional?
   assinaturas  Subscription[]
+  pedidos      Order[]
 
   @@index([cargo])
   @@map("usuarios")
@@ -125,4 +134,53 @@ model Subscription {
   @@index([planoId])
   @@index([status])
   @@map("assinaturas")
+}
+
+model Product {
+  id           BigInt   @id @default(autoincrement())
+  nome         String   @db.VarChar(150)
+  descricao    String?  @db.Text
+  preco        Decimal  @db.Decimal(9, 2)
+  estoque      Int      @default(0)
+  urlImagem    String?  @map("url_imagem") @db.VarChar(255)
+  ativo        Boolean  @default(true)
+  criadoEm     DateTime @default(now()) @map("criado_em")
+  atualizadoEm DateTime @updatedAt @map("atualizado_em")
+
+  itensPedido OrderProduct[]
+
+  @@index([ativo])
+  @@map("produtos")
+}
+
+model Order {
+  id           BigInt      @id @default(autoincrement())
+  usuarioId    BigInt      @map("usuarios_id")
+  total        Decimal     @db.Decimal(10, 2)
+  status       OrderStatus @default(PENDENTE)
+  criadoEm     DateTime    @default(now()) @map("criado_em")
+  atualizadoEm DateTime    @updatedAt @map("atualizado_em")
+
+  usuario User           @relation(fields: [usuarioId], references: [id])
+  itens   OrderProduct[]
+
+  @@index([usuarioId])
+  @@index([status])
+  @@map("pedidos")
+}
+
+model OrderProduct {
+  id            BigInt  @id @default(autoincrement())
+  pedidoId      BigInt  @map("pedidos_id")
+  produtoId     BigInt  @map("produtos_id")
+  quantidade    Int
+  precoUnitario Decimal @map("preco_unitario") @db.Decimal(10, 2)
+  subtotal      Decimal @db.Decimal(10, 2)
+
+  pedido  Order   @relation(fields: [pedidoId], references: [id])
+  produto Product @relation(fields: [produtoId], references: [id])
+
+  @@unique([pedidoId, produtoId])
+  @@index([produtoId])
+  @@map("pedidos_produtos")
 }
