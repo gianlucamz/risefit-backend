@@ -25,7 +25,7 @@ model User {
   nome           String   @db.VarChar(100)
   email          String   @unique @db.VarChar(150)
   senha          String   @db.VarChar(255)
-  dataNascimento DateTime @db.Date @map("data_nascimento")
+  dataNascimento DateTime @map("data_nascimento") @db.Date
   telefone       String   @db.VarChar(20)
   cargo          Cargo    @default(ALUNO)
   criadoEm       DateTime @default(now()) @map("criado_em")
@@ -48,19 +48,19 @@ model Professional {
   criadoEm       DateTime @default(now()) @map("criado_em")
   atualizadoEm   DateTime @updatedAt @map("atualizado_em")
 
-  usuario  User                   @relation(fields: [usuarioId], references: [id])
+  usuario  User                  @relation(fields: [usuarioId], references: [id])
   servicos ProfessionalService[]
 
   @@map("profissionais")
 }
 
 model Service {
-  id            BigInt   @id @default(autoincrement())
-  nome          String   @db.VarChar(200)
-  descricao     String?  @db.Text
-  ativo         Boolean  @default(true)
-  criadoEm      DateTime @default(now()) @map("criado_em")
-  atualizadoEm  DateTime @updatedAt @map("atualizado_em")
+  id           BigInt   @id @default(autoincrement())
+  nome         String   @db.VarChar(200)
+  descricao    String?  @db.Text
+  ativo        Boolean  @default(true)
+  criadoEm     DateTime @default(now()) @map("criado_em")
+  atualizadoEm DateTime @updatedAt @map("atualizado_em")
 
   profissionais ProfessionalService[]
   planos        PlanService[]
@@ -109,14 +109,14 @@ model PlanService {
 }
 
 model Subscription {
-  id            BigInt             @id @default(autoincrement())
-  usuarioId     BigInt             @map("usuarios_id")
-  planoId       BigInt             @map("planos_id")
-  dataInicio    DateTime           @db.Date @map("data_inicio")
-  dataFim       DateTime?          @db.Date @map("data_fim")
-  status        SubscriptionStatus @default(PENDENTE)
-  criadoEm      DateTime           @default(now()) @map("criado_em")
-  atualizadoEm  DateTime           @updatedAt @map("atualizado_em")
+  id           BigInt             @id @default(autoincrement())
+  usuarioId    BigInt             @map("usuarios_id")
+  planoId      BigInt             @map("planos_id")
+  dataInicio   DateTime           @map("data_inicio") @db.Date
+  dataFim      DateTime?          @map("data_fim") @db.Date
+  status       SubscriptionStatus @default(PENDENTE)
+  criadoEm     DateTime           @default(now()) @map("criado_em")
+  atualizadoEm DateTime           @updatedAt @map("atualizado_em")
 
   usuario User @relation(fields: [usuarioId], references: [id])
   plano   Plan @relation(fields: [planoId], references: [id])
