@@ -37,3 +37,4 @@ Thumbs.db
 
 # Prisma local/generated files
 .prisma/
+src/generated/prisma/
