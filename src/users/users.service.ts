@@ -16,20 +16,24 @@ export class UsersService {
   async create(dto: CreateUserDto) {
     try {
       const senha = await bcrypt.hash(dto.senha, 10);
-      return await this.prisma.user.create({
+      const user = await this.prisma.user.create({
         data: { ...dto, senha },
         omit: { senha: true },
       });
+
+      return this.formatUser(user);
     } catch (error) {
       this.handleError(error);
     }
   }
 
-  findAll() {
-    return this.prisma.user.findMany({
+  async findAll() {
+    const users = await this.prisma.user.findMany({
       orderBy: { id: 'asc' },
       omit: { senha: true },
     });
+
+    return users.map((user) => this.formatUser(user));
   }
 
   async findOne(id: bigint) {
@@ -37,8 +41,10 @@ export class UsersService {
       where: { id },
       omit: { senha: true },
     });
+
     if (!user) throw new NotFoundException(`Usuário ${id} não encontrado`);
-    return user;
+
+    return this.formatUser(user);
   }
 
   async update(id: bigint, dto: UpdateUserDto) {
@@ -46,11 +52,13 @@ export class UsersService {
       const data = { ...dto };
       if (data.senha) data.senha = await bcrypt.hash(data.senha, 10);
 
-      return await this.prisma.user.update({
+      const user = await this.prisma.user.update({
         where: { id },
         data,
         omit: { senha: true },
       });
+
+      return this.formatUser(user);
     } catch (error) {
       this.handleError(error, id);
     }
@@ -62,6 +70,13 @@ export class UsersService {
     } catch (error) {
       this.handleError(error, id);
     }
+  }
+
+  private formatUser<T extends { id: bigint }>(user: T) {
+    return {
+      ...user,
+      id: user.id.toString(),
+    };
   }
 
   private handleError(error: unknown, id?: bigint): never {
