@@ -16,7 +16,7 @@ import { ZodValidationPipe } from '../common/zod-validation.pipe.js';
 
 @Controller('professionals')
 export class ProfessionalsController {
-  constructor(private readonly professionalsService: ProfessionalsService) {}
+  constructor(private readonly professionalsService: ProfessionalsService) { }
 
   @Post()
   create(
