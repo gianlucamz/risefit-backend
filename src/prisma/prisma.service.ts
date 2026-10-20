@@ -6,8 +6,7 @@ import { PrismaClient } from '../generated/prisma/client.js';
 @Injectable()
 export class PrismaService
   extends PrismaClient
-  implements OnModuleInit, OnModuleDestroy
-{
+  implements OnModuleInit, OnModuleDestroy {
   constructor() {
     const url = new URL(process.env.DATABASE_URL!);
     const adapter = new PrismaMariaDb({

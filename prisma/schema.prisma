@@ -36,7 +36,7 @@ enum EventParticipantStatus {
 }
 
 model User {
-  id             BigInt   @id @default(autoincrement())
+  id             Int   @id @default(autoincrement())
   nome           String   @db.VarChar(100)
   email          String   @unique @db.VarChar(150)
   senha          String   @db.VarChar(255)
@@ -56,8 +56,8 @@ model User {
 }
 
 model Professional {
-  id             BigInt   @id @default(autoincrement())
-  usuarioId      BigInt   @unique @map("usuarios_id")
+  id             Int   @id @default(autoincrement())
+  usuarioId      Int   @unique @map("usuarios_id")
   especializacao String   @db.VarChar(145)
   biografia      String?  @db.Text
   urlFoto        String?  @db.VarChar(255)
@@ -72,7 +72,7 @@ model Professional {
 }
 
 model Service {
-  id           BigInt   @id @default(autoincrement())
+  id           Int   @id @default(autoincrement())
   nome         String   @db.VarChar(200)
   descricao    String?  @db.Text
   ativo        Boolean  @default(true)
@@ -86,8 +86,8 @@ model Service {
 }
 
 model ProfessionalService {
-  profissionalId BigInt   @map("profissionais_id")
-  servicoId      BigInt   @map("servicos_id")
+  profissionalId Int   @map("profissionais_id")
+  servicoId      Int   @map("servicos_id")
   criadoEm       DateTime @default(now()) @map("criado_em")
 
   profissional Professional @relation(fields: [profissionalId], references: [id])
@@ -98,7 +98,7 @@ model ProfessionalService {
 }
 
 model Plan {
-  id           BigInt   @id @default(autoincrement())
+  id           Int   @id @default(autoincrement())
   nome         String   @db.VarChar(100)
   descricao    String?  @db.Text
   preco        Decimal  @db.Decimal(8, 2)
@@ -114,8 +114,8 @@ model Plan {
 }
 
 model PlanService {
-  planoId   BigInt   @map("planos_id")
-  servicoId BigInt   @map("servicos_id")
+  planoId   Int   @map("planos_id")
+  servicoId Int   @map("servicos_id")
   criadoEm  DateTime @default(now()) @map("criado_em")
 
   plano   Plan    @relation(fields: [planoId], references: [id])
@@ -126,9 +126,9 @@ model PlanService {
 }
 
 model Subscription {
-  id           BigInt             @id @default(autoincrement())
-  usuarioId    BigInt             @map("usuarios_id")
-  planoId      BigInt             @map("planos_id")
+  id           Int             @id @default(autoincrement())
+  usuarioId    Int             @map("usuarios_id")
+  planoId      Int             @map("planos_id")
   dataInicio   DateTime           @map("data_inicio") @db.Date
   dataFim      DateTime?          @map("data_fim") @db.Date
   status       SubscriptionStatus @default(PENDENTE)
@@ -145,7 +145,7 @@ model Subscription {
 }
 
 model Product {
-  id           BigInt   @id @default(autoincrement())
+  id           Int   @id @default(autoincrement())
   nome         String   @db.VarChar(150)
   descricao    String?  @db.Text
   preco        Decimal  @db.Decimal(9, 2)
@@ -162,8 +162,8 @@ model Product {
 }
 
 model Order {
-  id           BigInt      @id @default(autoincrement())
-  usuarioId    BigInt      @map("usuarios_id")
+  id           Int      @id @default(autoincrement())
+  usuarioId    Int      @map("usuarios_id")
   total        Decimal     @db.Decimal(10, 2)
   status       OrderStatus @default(PENDENTE)
   criadoEm     DateTime    @default(now()) @map("criado_em")
@@ -178,9 +178,9 @@ model Order {
 }
 
 model OrderProduct {
-  id            BigInt  @id @default(autoincrement())
-  pedidoId      BigInt  @map("pedidos_id")
-  produtoId     BigInt  @map("produtos_id")
+  id            Int  @id @default(autoincrement())
+  pedidoId      Int  @map("pedidos_id")
+  produtoId     Int  @map("produtos_id")
   quantidade    Int
   precoUnitario Decimal @map("preco_unitario") @db.Decimal(10, 2)
   subtotal      Decimal @db.Decimal(10, 2)
@@ -194,7 +194,7 @@ model OrderProduct {
 }
 
 model Event {
-  id            BigInt   @id @default(autoincrement())
+  id            Int   @id @default(autoincrement())
   titulo        String   @db.VarChar(200)
   descricao     String?  @db.Text
   local         String   @db.VarChar(200)
@@ -210,8 +210,8 @@ model Event {
 }
 
 model EventParticipant {
-  usuarioId    BigInt                 @map("usuarios_id")
-  eventoId     BigInt                 @map("eventos_id")
+  usuarioId    Int                 @map("usuarios_id")
+  eventoId     Int                 @map("eventos_id")
   registradoEm DateTime               @default(now()) @map("registrado_em")
   status       EventParticipantStatus @default(INSCRITO)
 
