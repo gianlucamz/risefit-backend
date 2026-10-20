@@ -9,45 +9,61 @@ import type { UpdatePlanDto } from './dto/update-plan.dto.js';
 
 @Injectable()
 export class PlansService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
-  private toId(id: string): bigint {
-    try {
-      return BigInt(id);
-    } catch {
+  private validateId(id: number): number {
+    if (!Number.isSafeInteger(id) || id <= 0) {
       throw new BadRequestException('ID inválido');
     }
+
+    return id;
   }
 
   create(dto: CreatePlanDto) {
-    return this.prisma.plan.create({ data: dto });
-  }
-
-  findAll() {
-    return this.prisma.plan.findMany({ where: { ativo: true } });
-  }
-
-  async findOne(id: string) {
-    const plan = await this.prisma.plan.findUnique({
-      where: { id: this.toId(id) },
-    });
-    if (!plan) throw new NotFoundException('Plano não encontrado');
-    return plan;
-  }
-
-  async update(id: string, dto: UpdatePlanDto) {
-    await this.findOne(id);
-    return this.prisma.plan.update({
-      where: { id: this.toId(id) },
+    return this.prisma.plan.create({
       data: dto,
     });
   }
 
-  // Desativação lógica (RN004): não apaga, só marca como inativo
-  async remove(id: string) {
-    await this.findOne(id);
+  findAll() {
+    return this.prisma.plan.findMany({
+      where: { ativo: true },
+    });
+  }
+
+  async findOne(id: number) {
+    const planId = this.validateId(id);
+
+    const plan = await this.prisma.plan.findUnique({
+      where: { id: planId },
+    });
+
+    if (!plan) {
+      throw new NotFoundException('Plano não encontrado');
+    }
+
+    return plan;
+  }
+
+  async update(id: number, dto: UpdatePlanDto) {
+    const planId = this.validateId(id);
+
+    await this.findOne(planId);
+
     return this.prisma.plan.update({
-      where: { id: this.toId(id) },
+      where: { id: planId },
+      data: dto,
+    });
+  }
+
+  // Desativação lógica (RN004): não apaga, só marca como inativo.
+  async remove(id: number) {
+    const planId = this.validateId(id);
+
+    await this.findOne(planId);
+
+    return this.prisma.plan.update({
+      where: { id: planId },
       data: { ativo: false },
     });
   }

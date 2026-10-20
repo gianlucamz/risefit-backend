@@ -5,7 +5,7 @@ import {
   Body,
   Patch,
   Param,
-  Delete,
+  Delete, ParseIntPipe
 } from '@nestjs/common';
 import { ProfessionalsService } from './professionals.service.js';
 import { createProfessionalSchema } from './dto/create-professional.dto.js';
@@ -16,7 +16,7 @@ import { ZodValidationPipe } from '../common/zod-validation.pipe.js';
 
 @Controller('professionals')
 export class ProfessionalsController {
-  constructor(private readonly professionalsService: ProfessionalsService) {}
+  constructor(private readonly professionalsService: ProfessionalsService) { }
 
   @Post()
   create(
@@ -32,13 +32,13 @@ export class ProfessionalsController {
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
+  findOne(@Param('id', ParseIntPipe) id: number) {
     return this.professionalsService.findOne(id);
   }
 
   @Patch(':id')
   update(
-    @Param('id') id: string,
+    @Param('id', ParseIntPipe) id: number,
     @Body(new ZodValidationPipe(updateProfessionalSchema))
     dto: UpdateProfessionalDto,
   ) {
@@ -46,7 +46,7 @@ export class ProfessionalsController {
   }
 
   @Delete(':id')
-  remove(@Param('id') id: string) {
+  remove(@Param('id', ParseIntPipe) id: number) {
     return this.professionalsService.remove(id);
   }
 }
