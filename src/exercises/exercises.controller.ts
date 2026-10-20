@@ -1,3 +1,4 @@
+
 import {
   Controller,
   Get,
@@ -7,6 +8,7 @@ import {
   Param,
   Delete,
   Query,
+  ParseIntPipe,
 } from '@nestjs/common';
 import { ExercisesService } from './exercises.service.js';
 import { createExerciseSchema } from './dto/create-exercise.dto.js';
@@ -17,11 +19,14 @@ import { ZodValidationPipe } from '../common/zod-validation.pipe.js';
 
 @Controller('exercises')
 export class ExercisesController {
-  constructor(private readonly exercisesService: ExercisesService) {}
+  constructor(
+    private readonly exercisesService: ExercisesService,
+  ) {}
 
   @Post()
   create(
-    @Body(new ZodValidationPipe(createExerciseSchema)) dto: CreateExerciseDto,
+    @Body(new ZodValidationPipe(createExerciseSchema))
+    dto: CreateExerciseDto,
   ) {
     return this.exercisesService.create(dto);
   }
@@ -35,20 +40,25 @@ export class ExercisesController {
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
+  findOne(
+    @Param('id', ParseIntPipe) id: number,
+  ) {
     return this.exercisesService.findOne(id);
   }
 
   @Patch(':id')
   update(
-    @Param('id') id: string,
-    @Body(new ZodValidationPipe(updateExerciseSchema)) dto: UpdateExerciseDto,
+    @Param('id', ParseIntPipe) id: number,
+    @Body(new ZodValidationPipe(updateExerciseSchema))
+    dto: UpdateExerciseDto,
   ) {
     return this.exercisesService.update(id, dto);
   }
 
   @Delete(':id')
-  remove(@Param('id') id: string) {
+  remove(
+    @Param('id', ParseIntPipe) id: number,
+  ) {
     return this.exercisesService.remove(id);
   }
 }
