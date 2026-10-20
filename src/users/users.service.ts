@@ -1,4 +1,3 @@
-
 import {
   Injectable,
   NotFoundException,
@@ -6,7 +5,6 @@ import {
   ConflictException,
 } from '@nestjs/common';
 import { Prisma } from '../generated/prisma/client.js';
-
 import { PrismaService } from '../prisma/prisma.service.js';
 import type { CreateUserDto } from './dto/create-user.dto.js';
 import type { UpdateUserDto } from './dto/update-user.dto.js';
@@ -26,12 +24,12 @@ const select = {
 export class UsersService {
   constructor(private readonly prisma: PrismaService) { }
 
-  private toId(id: string): bigint {
-    if (!/^\d+$/.test(id)) {
+  private validateId(id: number): number {
+    if (!Number.isSafeInteger(id) || id <= 0) {
       throw new BadRequestException('ID inválido');
     }
 
-    return BigInt(id);
+    return id;
   }
 
   async create(dto: CreateUserDto) {
@@ -68,9 +66,11 @@ export class UsersService {
     });
   }
 
-  async findOne(id: string) {
+  async findOne(id: number) {
+    const usuarioId = this.validateId(id);
+
     const usuario = await this.prisma.user.findUnique({
-      where: { id: this.toId(id) },
+      where: { id: usuarioId },
       select,
     });
 
@@ -81,10 +81,10 @@ export class UsersService {
     return usuario;
   }
 
-  async update(id: string, dto: UpdateUserDto) {
-    const usuarioId = this.toId(id);
+  async update(id: number, dto: UpdateUserDto) {
+    const usuarioId = this.validateId(id);
 
-    await this.findOne(id);
+    await this.findOne(usuarioId);
 
     const { dataNascimento, ...dados } = dto;
 
@@ -111,10 +111,10 @@ export class UsersService {
     }
   }
 
-  async remove(id: string) {
-    const usuarioId = this.toId(id);
+  async remove(id: number) {
+    const usuarioId = this.validateId(id);
 
-    await this.findOne(id);
+    await this.findOne(usuarioId);
 
     await this.prisma.user.delete({
       where: { id: usuarioId },

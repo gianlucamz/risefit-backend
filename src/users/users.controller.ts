@@ -6,7 +6,7 @@ import {
   Body,
   Patch,
   Param,
-  Delete,
+  Delete, ParseIntPipe
 } from '@nestjs/common';
 
 import { UsersService } from './users.service.js';
@@ -34,13 +34,13 @@ export class UsersController {
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
+  findOne(@Param('id', ParseIntPipe) id: number) {
     return this.usersService.findOne(id);
   }
 
   @Patch(':id')
   update(
-    @Param('id') id: string,
+    @Param('id', ParseIntPipe) id: number,
     @Body(new ZodValidationPipe(updateUserSchema))
     dto: UpdateUserDto,
   ) {
@@ -48,7 +48,7 @@ export class UsersController {
   }
 
   @Delete(':id')
-  remove(@Param('id') id: string) {
+  remove(@Param('id', ParseIntPipe) id: number) {
     return this.usersService.remove(id);
   }
 }
