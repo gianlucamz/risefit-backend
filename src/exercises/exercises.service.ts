@@ -1,5 +1,5 @@
+
 import {
-  BadRequestException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -9,18 +9,14 @@ import type { UpdateExerciseDto } from './dto/update-exercise.dto.js';
 
 @Injectable()
 export class ExercisesService {
-  constructor(private readonly prisma: PrismaService) {}
-
-  private toId(id: string): bigint {
-    try {
-      return BigInt(id);
-    } catch {
-      throw new BadRequestException('ID inválido');
-    }
-  }
+  constructor(
+    private readonly prisma: PrismaService,
+  ) { }
 
   create(dto: CreateExerciseDto) {
-    return this.prisma.exercise.create({ data: dto });
+    return this.prisma.exercise.create({
+      data: dto,
+    });
   }
 
   // Filtros opcionais: /exercises?grupoMuscular=Peito&nivel=INICIANTE
@@ -34,27 +30,33 @@ export class ExercisesService {
     });
   }
 
-  async findOne(id: string) {
+  async findOne(id: number) {
     const exercise = await this.prisma.exercise.findUnique({
-      where: { id: this.toId(id) },
+      where: { id },
     });
-    if (!exercise) throw new NotFoundException('Exercício não encontrado');
+
+    if (!exercise) {
+      throw new NotFoundException('Exercício não encontrado');
+    }
+
     return exercise;
   }
 
-  async update(id: string, dto: UpdateExerciseDto) {
+  async update(id: number, dto: UpdateExerciseDto) {
     await this.findOne(id);
+
     return this.prisma.exercise.update({
-      where: { id: this.toId(id) },
+      where: { id },
       data: dto,
     });
   }
 
   // Desativação lógica (RN004)
-  async remove(id: string) {
+  async remove(id: number) {
     await this.findOne(id);
+
     return this.prisma.exercise.update({
-      where: { id: this.toId(id) },
+      where: { id },
       data: { ativo: false },
     });
   }

@@ -22,7 +22,77 @@ const prisma = new PrismaClient({ adapter });
 const SALT_ROUNDS = 10;
 
 async function main() {
-  console.log('🌱 Iniciando o seed do banco de dados...');
+  console.log('🌱 Iniciando o seed do banco de dados...\n');
+
+  // ==========================================
+  // 1. Seed de Planos da Academia
+  // ==========================================
+  console.log('📋 Povoando Planos...');
+
+  const plansToSeed = [
+    {
+      id: 1,
+      nome: 'Plano Mensal - Basic',
+      descricao: 'Acesso total à musculação e área cardio com pagamento mensal e sem taxa de fidelidade.',
+      preco: 119.9,
+      duracaoMeses: 1,
+      ativo: true,
+    },
+    {
+      id: 2,
+      nome: 'Plano Trimestral - Fit',
+      descricao: 'Acesso completo à academia + 1 avaliação física com bioimpedância e plano de 3 meses.',
+      preco: 299.9,
+      duracaoMeses: 3,
+      ativo: true,
+    },
+    {
+      id: 3,
+      nome: 'Plano Anual - VIP',
+      descricao: 'Acesso ilimitado, todas as aulas coletivas, acompanhamento nutricional mensal e taxa zero de matrícula.',
+      preco: 999.0,
+      duracaoMeses: 12,
+      ativo: true,
+    },
+  ];
+
+  for (const plan of plansToSeed) {
+    const existingPlan = await prisma.plan.findFirst({
+      where: {
+        OR: [{ id: plan.id }, { nome: plan.nome }],
+      },
+    });
+
+    const targetId = existingPlan ? existingPlan.id : plan.id;
+
+    const seededPlan = await prisma.plan.upsert({
+      where: { id: targetId },
+      update: {
+        nome: plan.nome,
+        descricao: plan.descricao,
+        preco: plan.preco,
+        duracaoMeses: plan.duracaoMeses,
+        ativo: plan.ativo,
+      },
+      create: {
+        id: plan.id,
+        nome: plan.nome,
+        descricao: plan.descricao,
+        preco: plan.preco,
+        duracaoMeses: plan.duracaoMeses,
+        ativo: plan.ativo,
+      },
+    });
+
+    console.log(
+      `✅ Plano configurado: ${seededPlan.nome} [${seededPlan.duracaoMeses} mês(es) - R$ ${Number(seededPlan.preco).toFixed(2)}]`,
+    );
+  }
+
+  // ==========================================
+  // 2. Seed de Usuários
+  // ==========================================
+  console.log('\n👤 Povoando Usuários...');
 
   const defaultPassword = 'SenhaForte@123';
   const hashedPassword = await bcrypt.hash(defaultPassword, SALT_ROUNDS);
@@ -54,6 +124,8 @@ async function main() {
     },
   ];
 
+  let professionalUserId: number | null = null;
+
   for (const user of usersToSeed) {
     const seededUser = await prisma.user.upsert({
       where: { email: user.email },
@@ -67,10 +139,55 @@ async function main() {
       create: user,
     });
 
+    if (seededUser.cargo === Cargo.PROFISSIONAL) {
+      professionalUserId = seededUser.id;
+    }
+
     console.log(`✅ Usuário configurado: ${seededUser.email} [${seededUser.cargo}]`);
   }
 
-  console.log('✨ Seed finalizado com sucesso!');
+  // ==========================================
+  // 3. Seed de Profissionais
+  // ==========================================
+  console.log('\n🏋️ Povoando Profissionais...');
+
+  if (!professionalUserId) {
+    const professionalUser = await prisma.user.findUnique({
+      where: { email: 'mariana.personal@risefit.com' },
+    });
+    professionalUserId = professionalUser?.id ?? null;
+  }
+
+  if (professionalUserId) {
+    const seededProfessional = await prisma.professional.upsert({
+      where: { usuarioId: professionalUserId },
+      update: {
+        especializacao: 'Personal Trainer & Treinamento Funcional (CREF 045123-G/SP)',
+        biografia:
+          'Bacharel em Educação Física, especialista em biomecânica, hipertrofia e reabilitação postural com mais de 8 anos de experiência.',
+        urlFoto:
+          'https://images.unsplash.com/photo-1594381898411-846e7d193883?auto=format&fit=crop&q=80&w=400',
+        ativo: true,
+      },
+      create: {
+        usuarioId: professionalUserId,
+        especializacao: 'Personal Trainer & Treinamento Funcional (CREF 045123-G/SP)',
+        biografia:
+          'Bacharel em Educação Física, especialista em biomecânica, hipertrofia e reabilitação postural com mais de 8 anos de experiência.',
+        urlFoto:
+          'https://images.unsplash.com/photo-1594381898411-846e7d193883?auto=format&fit=crop&q=80&w=400',
+        ativo: true,
+      },
+    });
+
+    console.log(
+      `✅ Profissional configurado: ID ${seededProfessional.id} (Usuário ID: ${seededProfessional.usuarioId}) - ${seededProfessional.especializacao}`,
+    );
+  } else {
+    console.warn('⚠️ Usuário com perfil de PROFISSIONAL não encontrado para vínculo.');
+  }
+
+  console.log('\n✨ Seed finalizado com sucesso!');
 }
 
 main()
@@ -81,4 +198,3 @@ main()
   .finally(async () => {
     await prisma.$disconnect();
   });
-
