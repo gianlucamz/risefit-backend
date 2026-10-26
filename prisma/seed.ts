@@ -24,6 +24,9 @@ const SALT_ROUNDS = 10;
 async function main() {
   console.log('🌱 Iniciando o seed do banco de dados...\n');
 
+  // ==========================================
+  // 1. Seed de Planos da Academia
+  // ==========================================
   console.log('📋 Povoando Planos...');
 
   const plansToSeed = [
@@ -86,6 +89,9 @@ async function main() {
     );
   }
 
+  // ==========================================
+  // 2. Seed de Usuários
+  // ==========================================
   console.log('\n👤 Povoando Usuários...');
 
   const defaultPassword = 'SenhaForte@123';
@@ -118,6 +124,8 @@ async function main() {
     },
   ];
 
+  let professionalUserId: number | null = null;
+
   for (const user of usersToSeed) {
     const seededUser = await prisma.user.upsert({
       where: { email: user.email },
@@ -131,7 +139,52 @@ async function main() {
       create: user,
     });
 
+    if (seededUser.cargo === Cargo.PROFISSIONAL) {
+      professionalUserId = seededUser.id;
+    }
+
     console.log(`✅ Usuário configurado: ${seededUser.email} [${seededUser.cargo}]`);
+  }
+
+  // ==========================================
+  // 3. Seed de Profissionais
+  // ==========================================
+  console.log('\n🏋️ Povoando Profissionais...');
+
+  if (!professionalUserId) {
+    const professionalUser = await prisma.user.findUnique({
+      where: { email: 'mariana.personal@risefit.com' },
+    });
+    professionalUserId = professionalUser?.id ?? null;
+  }
+
+  if (professionalUserId) {
+    const seededProfessional = await prisma.professional.upsert({
+      where: { usuarioId: professionalUserId },
+      update: {
+        especializacao: 'Personal Trainer & Treinamento Funcional (CREF 045123-G/SP)',
+        biografia:
+          'Bacharel em Educação Física, especialista em biomecânica, hipertrofia e reabilitação postural com mais de 8 anos de experiência.',
+        urlFoto:
+          'https://images.unsplash.com/photo-1594381898411-846e7d193883?auto=format&fit=crop&q=80&w=400',
+        ativo: true,
+      },
+      create: {
+        usuarioId: professionalUserId,
+        especializacao: 'Personal Trainer & Treinamento Funcional (CREF 045123-G/SP)',
+        biografia:
+          'Bacharel em Educação Física, especialista em biomecânica, hipertrofia e reabilitação postural com mais de 8 anos de experiência.',
+        urlFoto:
+          'https://images.unsplash.com/photo-1594381898411-846e7d193883?auto=format&fit=crop&q=80&w=400',
+        ativo: true,
+      },
+    });
+
+    console.log(
+      `✅ Profissional configurado: ID ${seededProfessional.id} (Usuário ID: ${seededProfessional.usuarioId}) - ${seededProfessional.especializacao}`,
+    );
+  } else {
+    console.warn('⚠️ Usuário com perfil de PROFISSIONAL não encontrado para vínculo.');
   }
 
   console.log('\n✨ Seed finalizado com sucesso!');
