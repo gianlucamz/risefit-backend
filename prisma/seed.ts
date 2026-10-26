@@ -22,7 +22,71 @@ const prisma = new PrismaClient({ adapter });
 const SALT_ROUNDS = 10;
 
 async function main() {
-  console.log('🌱 Iniciando o seed do banco de dados...');
+  console.log('🌱 Iniciando o seed do banco de dados...\n');
+
+  console.log('📋 Povoando Planos...');
+
+  const plansToSeed = [
+    {
+      id: 1,
+      nome: 'Plano Mensal - Basic',
+      descricao: 'Acesso total à musculação e área cardio com pagamento mensal e sem taxa de fidelidade.',
+      preco: 119.9,
+      duracaoMeses: 1,
+      ativo: true,
+    },
+    {
+      id: 2,
+      nome: 'Plano Trimestral - Fit',
+      descricao: 'Acesso completo à academia + 1 avaliação física com bioimpedância e plano de 3 meses.',
+      preco: 299.9,
+      duracaoMeses: 3,
+      ativo: true,
+    },
+    {
+      id: 3,
+      nome: 'Plano Anual - VIP',
+      descricao: 'Acesso ilimitado, todas as aulas coletivas, acompanhamento nutricional mensal e taxa zero de matrícula.',
+      preco: 999.0,
+      duracaoMeses: 12,
+      ativo: true,
+    },
+  ];
+
+  for (const plan of plansToSeed) {
+    const existingPlan = await prisma.plan.findFirst({
+      where: {
+        OR: [{ id: plan.id }, { nome: plan.nome }],
+      },
+    });
+
+    const targetId = existingPlan ? existingPlan.id : plan.id;
+
+    const seededPlan = await prisma.plan.upsert({
+      where: { id: targetId },
+      update: {
+        nome: plan.nome,
+        descricao: plan.descricao,
+        preco: plan.preco,
+        duracaoMeses: plan.duracaoMeses,
+        ativo: plan.ativo,
+      },
+      create: {
+        id: plan.id,
+        nome: plan.nome,
+        descricao: plan.descricao,
+        preco: plan.preco,
+        duracaoMeses: plan.duracaoMeses,
+        ativo: plan.ativo,
+      },
+    });
+
+    console.log(
+      `✅ Plano configurado: ${seededPlan.nome} [${seededPlan.duracaoMeses} mês(es) - R$ ${Number(seededPlan.preco).toFixed(2)}]`,
+    );
+  }
+
+  console.log('\n👤 Povoando Usuários...');
 
   const defaultPassword = 'SenhaForte@123';
   const hashedPassword = await bcrypt.hash(defaultPassword, SALT_ROUNDS);
@@ -70,7 +134,7 @@ async function main() {
     console.log(`✅ Usuário configurado: ${seededUser.email} [${seededUser.cargo}]`);
   }
 
-  console.log('✨ Seed finalizado com sucesso!');
+  console.log('\n✨ Seed finalizado com sucesso!');
 }
 
 main()
@@ -81,4 +145,3 @@ main()
   .finally(async () => {
     await prisma.$disconnect();
   });
-
