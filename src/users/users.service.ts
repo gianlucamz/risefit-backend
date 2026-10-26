@@ -4,21 +4,13 @@ import {
   BadRequestException,
   ConflictException,
 } from '@nestjs/common';
+import bcrypt from 'bcrypt';
 import { Prisma } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import type { CreateUserDto } from './dto/create-user.dto.js';
 import type { UpdateUserDto } from './dto/update-user.dto.js';
 
-const select = {
-  id: true,
-  nome: true,
-  email: true,
-  dataNascimento: true,
-  telefone: true,
-  cargo: true,
-  criadoEm: true,
-  atualizadoEm: true,
-};
+const SALT_ROUNDS = 10;
 
 @Injectable()
 export class UsersService {
@@ -34,25 +26,31 @@ export class UsersService {
 
   async create(dto: CreateUserDto) {
     try {
+      const hashedPassword = await bcrypt.hash(dto.senha, SALT_ROUNDS);
+
       return await this.prisma.user.create({
         data: {
           nome: dto.nome,
           email: dto.email,
-          senha: dto.senha,
+          senha: hashedPassword,
           dataNascimento: new Date(dto.dataNascimento),
           telefone: dto.telefone,
           ...(dto.cargo !== undefined && {
             cargo: dto.cargo,
           }),
         },
-        select,
+        omit: {
+          senha: true,
+        },
       });
     } catch (error) {
-      if (
-        error instanceof Prisma.PrismaClientKnownRequestError &&
-        error.code === 'P2002'
-      ) {
-        throw new ConflictException('Este e-mail já está cadastrado');
+      if (error instanceof Prisma.PrismaClientKnownRequestError) {
+        if (error.code === 'P2002') {
+          throw new ConflictException('Este e-mail já está cadastrado');
+        }
+        if (error.code === 'P2025') {
+          throw new NotFoundException('Usuário não encontrado');
+        }
       }
 
       throw error;
@@ -61,7 +59,9 @@ export class UsersService {
 
   findAll() {
     return this.prisma.user.findMany({
-      select,
+      omit: {
+        senha: true,
+      },
       orderBy: { id: 'asc' },
     });
   }
@@ -71,7 +71,9 @@ export class UsersService {
 
     const usuario = await this.prisma.user.findUnique({
       where: { id: usuarioId },
-      select,
+      omit: {
+        senha: true,
+      },
     });
 
     if (!usuario) {
@@ -86,18 +88,25 @@ export class UsersService {
 
     await this.findOne(usuarioId);
 
-    const { dataNascimento, ...dados } = dto;
+    const { dataNascimento, senha, ...dados } = dto;
+
+    const data: Prisma.UserUpdateInput = {
+      ...dados,
+      ...(dataNascimento !== undefined && {
+        dataNascimento: new Date(dataNascimento),
+      }),
+      ...(senha !== undefined && {
+        senha: await bcrypt.hash(senha, SALT_ROUNDS),
+      }),
+    };
 
     try {
       return await this.prisma.user.update({
         where: { id: usuarioId },
-        data: {
-          ...dados,
-          ...(dataNascimento !== undefined && {
-            dataNascimento: new Date(dataNascimento),
-          }),
+        data,
+        omit: {
+          senha: true,
         },
-        select,
       });
     } catch (error) {
       if (
@@ -123,3 +132,4 @@ export class UsersService {
     return { message: 'Usuário removido com sucesso' };
   }
 }
+
