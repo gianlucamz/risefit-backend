@@ -1,0 +1,25 @@
+info:
+  name: POST /plans
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: http://localhost:3000/plans
+  body:
+    type: json
+    data: |-
+      {
+        "nome": "Plano Premium",
+        "descricao": "Acesso completo à academia e aos serviços exclusivos.",
+        "preco": 149.90,
+        "duracaoMeses": 12,
+        "ativo": true
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

@@ -1,0 +1,25 @@
+info:
+  name: POST /professionals
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: http://localhost:3000/professionals
+  body:
+    type: json
+    data: |-
+      {
+        "usuarioId": 1,
+        "especializacao": "Personal Trainer",
+        "biografia": "Profissional especializado em treinamento físico, hipertrofia e condicionamento físico.",
+        "urlFoto": "https://exemplo.com/fotos/profissional.jpg",
+        "ativo": true
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

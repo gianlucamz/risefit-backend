@@ -1,0 +1,26 @@
+info:
+  name: POST /users
+  type: http
+  seq: 2
+
+http:
+  method: POST
+  url: http://localhost:3000/users
+  body:
+    type: json
+    data: |-
+      {
+        "nome": "João Silva",
+        "email": "joao.silva@exemplo.com",
+        "senha": "SenhaSegura123!",
+        "dataNascimento": "1995-05-20",
+        "telefone": "11999998888",
+        "cargo": "ALUNO"
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
