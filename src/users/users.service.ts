@@ -3,12 +3,14 @@ import {
   NotFoundException,
   BadRequestException,
   ConflictException,
+  UnauthorizedException,
 } from '@nestjs/common';
 import bcrypt from 'bcrypt';
 import { Prisma } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import type { CreateUserDto } from './dto/create-user.dto.js';
 import type { UpdateUserDto } from './dto/update-user.dto.js';
+import type { LoginDto } from './dto/login.dto.js';
 
 const SALT_ROUNDS = 10;
 
@@ -35,6 +37,12 @@ export class UsersService {
           senha: hashedPassword,
           dataNascimento: new Date(dto.dataNascimento),
           telefone: dto.telefone,
+          ...(dto.cpf !== undefined && {
+            cpf: dto.cpf,
+          }),
+          ...(dto.sexo !== undefined && {
+            sexo: dto.sexo,
+          }),
           ...(dto.cargo !== undefined && {
             cargo: dto.cargo,
           }),
@@ -46,6 +54,13 @@ export class UsersService {
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError) {
         if (error.code === 'P2002') {
+          const target = error.meta?.target;
+          if (
+            (Array.isArray(target) && target.includes('cpf')) ||
+            (typeof target === 'string' && target.includes('cpf'))
+          ) {
+            throw new ConflictException('Este CPF já está cadastrado');
+          }
           throw new ConflictException('Este e-mail já está cadastrado');
         }
         if (error.code === 'P2025') {
@@ -55,6 +70,43 @@ export class UsersService {
 
       throw error;
     }
+  }
+
+  async login(dto: LoginDto) {
+    const identificador = dto.identificador.trim();
+    let usuario;
+
+    if (identificador.includes('@')) {
+      usuario = await this.prisma.user.findUnique({
+        where: { email: identificador.toLowerCase() },
+      });
+    } else {
+      const cpfLimpo = identificador.replace(/\D/g, '');
+      usuario = await this.prisma.user.findFirst({
+        where: {
+          OR: [
+            { cpf: identificador },
+            { cpf: cpfLimpo },
+            { email: identificador },
+          ],
+        },
+      });
+    }
+
+    if (!usuario) {
+      throw new UnauthorizedException('E-mail ou senha incorretos');
+    }
+
+    const senhaValida = await bcrypt.compare(dto.senha, usuario.senha);
+    if (!senhaValida) {
+      throw new UnauthorizedException('E-mail ou senha incorretos');
+    }
+
+    const { senha: _, ...usuarioSemSenha } = usuario;
+    return {
+      usuario: usuarioSemSenha,
+      token: `risefit_token_${usuario.id}_${Date.now()}`,
+    };
   }
 
   findAll() {
