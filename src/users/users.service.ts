@@ -123,6 +123,15 @@ export class UsersService {
 
     const usuario = await this.prisma.user.findUnique({
       where: { id: usuarioId },
+      include: {
+        assinaturas: {
+          include: {
+            plano: true,
+          },
+          orderBy: { criadoEm: 'desc' },
+        },
+        enderecos: true,
+      },
       omit: {
         senha: true,
       },
@@ -138,17 +147,35 @@ export class UsersService {
   async update(id: number, dto: UpdateUserDto) {
     const usuarioId = this.validateId(id);
 
-    await this.findOne(usuarioId);
+    const usuarioExistente = await this.prisma.user.findUnique({
+      where: { id: usuarioId },
+    });
 
-    const { dataNascimento, senha, ...dados } = dto;
+    if (!usuarioExistente) {
+      throw new NotFoundException('Usuário não encontrado');
+    }
+
+    const { dataNascimento, senha, senhaAtual, novaSenha, ...dados } = dto;
+
+    let senhaFinalHash: string | undefined = undefined;
+
+    if (senhaAtual && novaSenha) {
+      const senhaValida = await bcrypt.compare(senhaAtual, usuarioExistente.senha);
+      if (!senhaValida) {
+        throw new BadRequestException('A senha atual informada está incorreta');
+      }
+      senhaFinalHash = await bcrypt.hash(novaSenha, SALT_ROUNDS);
+    } else if (senha) {
+      senhaFinalHash = await bcrypt.hash(senha, SALT_ROUNDS);
+    }
 
     const data: Prisma.UserUpdateInput = {
       ...dados,
       ...(dataNascimento !== undefined && {
         dataNascimento: new Date(dataNascimento),
       }),
-      ...(senha !== undefined && {
-        senha: await bcrypt.hash(senha, SALT_ROUNDS),
+      ...(senhaFinalHash !== undefined && {
+        senha: senhaFinalHash,
       }),
     };
 
@@ -156,6 +183,15 @@ export class UsersService {
       return await this.prisma.user.update({
         where: { id: usuarioId },
         data,
+        include: {
+          assinaturas: {
+            include: {
+              plano: true,
+            },
+            orderBy: { criadoEm: 'desc' },
+          },
+          enderecos: true,
+        },
         omit: {
           senha: true,
         },
@@ -165,6 +201,13 @@ export class UsersService {
         error instanceof Prisma.PrismaClientKnownRequestError &&
         error.code === 'P2002'
       ) {
+        const target = error.meta?.target;
+        if (
+          (Array.isArray(target) && target.includes('cpf')) ||
+          (typeof target === 'string' && target.includes('cpf'))
+        ) {
+          throw new ConflictException('Este CPF já está cadastrado');
+        }
         throw new ConflictException('Este e-mail já está cadastrado');
       }
 
