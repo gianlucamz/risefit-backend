@@ -11,7 +11,15 @@ import type { UpdateSubscriptionDto } from './dto/update-subscription.dto.js';
 
 const include = {
   usuario: { select: { id: true, nome: true, email: true } },
-  plano: { select: { id: true, nome: true, preco: true } },
+  plano: {
+    select: {
+      id: true,
+      nome: true,
+      descricao: true,
+      preco: true,
+      duracaoMeses: true,
+    },
+  },
 };
 
 @Injectable()
@@ -28,6 +36,18 @@ export class SubscriptionsService {
     const d = new Date(date);
     d.setUTCMonth(d.getUTCMonth() + months);
     return d;
+  }
+
+  private async syncExpiredSubscriptions() {
+    await this.prisma.subscription.updateMany({
+      where: {
+        status: SubscriptionStatus.ATIVA,
+        dataFim: { lt: this.hoje() },
+      },
+      data: {
+        status: SubscriptionStatus.EXPIRADA,
+      },
+    });
   }
 
   private present<
@@ -52,6 +72,8 @@ export class SubscriptionsService {
   }
 
   async create(dto: CreateSubscriptionDto) {
+    await this.syncExpiredSubscriptions();
+
     const user = await this.prisma.user.findUnique({
       where: { id: dto.usuarioId },
     });
@@ -62,13 +84,14 @@ export class SubscriptionsService {
     });
     if (!plan || !plan.ativo) {
       throw new BadRequestException('Plano não encontrado ou inativo');
-    }
+    } 
 
-    // Um cadastro por usuário (canceladas não contam)
     const existente = await this.prisma.subscription.findFirst({
       where: {
         usuarioId: dto.usuarioId,
-        status: { not: SubscriptionStatus.CANCELADA },
+        status: {
+          in: [SubscriptionStatus.ATIVA, SubscriptionStatus.PENDENTE],
+        },
       },
     });
     if (existente) {
@@ -93,25 +116,22 @@ export class SubscriptionsService {
     return this.present(created);
   }
 
-  async findAll(filtros: { usuarioId?: number; status?: string }) {
-    const lista = await this.prisma.subscription.findMany({
+  async findAll(filtros: { usuarioId?: number; status?: SubscriptionStatus }) {
+    await this.syncExpiredSubscriptions();
+
+    return this.prisma.subscription.findMany({
       where: {
         usuarioId: filtros.usuarioId,
-        status:
-          filtros.status === SubscriptionStatus.CANCELADA
-            ? SubscriptionStatus.CANCELADA
-            : { not: SubscriptionStatus.CANCELADA },
+        status: filtros.status ?? { not: SubscriptionStatus.CANCELADA },
       },
       include,
       orderBy: { criadoEm: 'desc' },
     });
-    const apresentadas = lista.map((s) => this.present(s));
-    return filtros.status
-      ? apresentadas.filter((s) => s.status === filtros.status)
-      : apresentadas;
   }
 
   private async find(id: number) {
+    await this.syncExpiredSubscriptions();
+
     const sub = await this.prisma.subscription.findUnique({
       where: { id },
       include,
