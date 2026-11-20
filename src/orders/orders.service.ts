@@ -51,35 +51,45 @@ export class OrdersService {
       where: { email: dto.usuario.email },
     });
 
-    if (emailExistente) {
-      throw new ConflictException('Já existe um usuário cadastrado com este e-mail');
+    const cpfExistente = dto.usuario.cpf
+      ? await this.prisma.user.findUnique({
+          where: { cpf: dto.usuario.cpf },
+        })
+      : null;
+
+    if (
+      emailExistente &&
+      cpfExistente &&
+      emailExistente.id !== cpfExistente.id
+    ) {
+      throw new ConflictException('Conflito entre e-mail e CPF informados');
     }
 
-    const cpfExistente = await this.prisma.user.findUnique({
-      where: { cpf: dto.usuario.cpf },
-    });
-
-    if (cpfExistente) {
-      throw new ConflictException('Já existe um usuário cadastrado com este CPF');
-    }
+    const usuarioExistente = emailExistente || cpfExistente;
 
     const SALT_ROUNDS = 10;
-    const senhaHash = await bcrypt.hash(dto.usuario.senha, SALT_ROUNDS);
+    const senhaHash =
+      !usuarioExistente && dto.usuario.senha
+        ? await bcrypt.hash(dto.usuario.senha, SALT_ROUNDS)
+        : null;
 
     try {
       return await this.prisma.$transaction(async (tx) => {
-        const usuario = await tx.user.create({
-          data: {
-            nome: dto.usuario.nome,
-            email: dto.usuario.email,
-            senha: senhaHash,
-            cpf: dto.usuario.cpf,
-            sexo: dto.usuario.sexo,
-            dataNascimento: new Date(dto.usuario.dataNascimento),
-            telefone: dto.usuario.telefone,
-            cargo: dto.usuario.cargo ?? 'ALUNO',
-          },
-        });
+        let usuario = usuarioExistente;
+        if (!usuario) {
+          usuario = await tx.user.create({
+            data: {
+              nome: dto.usuario.nome,
+              email: dto.usuario.email,
+              senha: senhaHash || (await bcrypt.hash('RiseFit@123', SALT_ROUNDS)),
+              cpf: dto.usuario.cpf,
+              sexo: dto.usuario.sexo,
+              dataNascimento: new Date(dto.usuario.dataNascimento),
+              telefone: dto.usuario.telefone,
+              cargo: dto.usuario.cargo ?? 'ALUNO',
+            },
+          });
+        }
 
         await tx.address.create({
           data: {
