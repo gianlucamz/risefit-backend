@@ -11,7 +11,7 @@ import type { UpdateSubscriptionDto } from './dto/update-subscription.dto.js';
 
 const include = {
   usuario: { select: { id: true, nome: true, email: true } },
-  plano: { select: { id: true, nome: true, preco: true } },
+  plano: true,
 };
 
 @Injectable()
@@ -64,21 +64,34 @@ export class SubscriptionsService {
       throw new BadRequestException('Plano não encontrado ou inativo');
     }
 
-    // Um cadastro por usuário (canceladas não contam)
+    const dataInicio = dto.dataInicio ?? this.hoje();
+    const dataFim =
+      dto.dataFim ?? this.addMonths(dataInicio, plan.duracaoMeses);
+    this.checkDates(dataInicio, dataFim);
+
+    const statusFinal = dto.status ?? SubscriptionStatus.ATIVA;
+
+    // Se o usuário já tiver uma inscrição ativa ou pendente, atualiza para o novo plano
     const existente = await this.prisma.subscription.findFirst({
       where: {
         usuarioId: dto.usuarioId,
         status: { not: SubscriptionStatus.CANCELADA },
       },
     });
-    if (existente) {
-      throw new ConflictException('Este usuário já possui uma inscrição');
-    }
 
-    const dataInicio = dto.dataInicio ?? this.hoje();
-    const dataFim =
-      dto.dataFim ?? this.addMonths(dataInicio, plan.duracaoMeses);
-    this.checkDates(dataInicio, dataFim);
+    if (existente) {
+      const updated = await this.prisma.subscription.update({
+        where: { id: existente.id },
+        data: {
+          planoId: dto.planoId,
+          dataInicio,
+          dataFim,
+          status: statusFinal,
+        },
+        include,
+      });
+      return this.present(updated);
+    }
 
     const created = await this.prisma.subscription.create({
       data: {
@@ -86,7 +99,7 @@ export class SubscriptionsService {
         planoId: dto.planoId,
         dataInicio,
         dataFim,
-        status: dto.status,
+        status: statusFinal,
       },
       include,
     });
@@ -103,7 +116,7 @@ export class SubscriptionsService {
             : { not: SubscriptionStatus.CANCELADA },
       },
       include,
-      orderBy: { criadoEm: 'desc' },
+      orderBy: { id: 'desc' },
     });
     const apresentadas = lista.map((s) => this.present(s));
     return filtros.status

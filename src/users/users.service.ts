@@ -79,6 +79,13 @@ export class UsersService {
     if (identificador.includes('@')) {
       usuario = await this.prisma.user.findUnique({
         where: { email: identificador.toLowerCase() },
+        include: {
+          assinaturas: {
+            include: { plano: true },
+            orderBy: { id: 'desc' },
+          },
+          enderecos: true,
+        },
       });
     } else {
       const cpfLimpo = identificador.replace(/\D/g, '');
@@ -89,6 +96,13 @@ export class UsersService {
             { cpf: cpfLimpo },
             { email: identificador },
           ],
+        },
+        include: {
+          assinaturas: {
+            include: { plano: true },
+            orderBy: { id: 'desc' },
+          },
+          enderecos: true,
         },
       });
     }
@@ -128,7 +142,7 @@ export class UsersService {
           include: {
             plano: true,
           },
-          orderBy: { criadoEm: 'desc' },
+          orderBy: { id: 'desc' },
         },
         enderecos: true,
       },
@@ -188,7 +202,7 @@ export class UsersService {
             include: {
               plano: true,
             },
-            orderBy: { criadoEm: 'desc' },
+            orderBy: { id: 'desc' },
           },
           enderecos: true,
         },
