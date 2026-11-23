@@ -1,6 +1,5 @@
 import {
   BadRequestException,
-  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -11,7 +10,7 @@ import type { UpdateSubscriptionDto } from './dto/update-subscription.dto.js';
 
 const include = {
   usuario: { select: { id: true, nome: true, email: true } },
-  plano: { select: { id: true, nome: true, preco: true } },
+  plano: true,
 };
 
 @Injectable()
@@ -64,21 +63,34 @@ export class SubscriptionsService {
       throw new BadRequestException('Plano não encontrado ou inativo');
     }
 
-    // Um cadastro por usuário (canceladas não contam)
+    const dataInicio = dto.dataInicio ?? this.hoje();
+    const dataFim =
+      dto.dataFim ?? this.addMonths(dataInicio, plan.duracaoMeses);
+    this.checkDates(dataInicio, dataFim);
+
+    const statusFinal = dto.status ?? SubscriptionStatus.ATIVA;
+
     const existente = await this.prisma.subscription.findFirst({
       where: {
         usuarioId: dto.usuarioId,
         status: { not: SubscriptionStatus.CANCELADA },
       },
     });
-    if (existente) {
-      throw new ConflictException('Este usuário já possui uma inscrição');
-    }
 
-    const dataInicio = dto.dataInicio ?? this.hoje();
-    const dataFim =
-      dto.dataFim ?? this.addMonths(dataInicio, plan.duracaoMeses);
-    this.checkDates(dataInicio, dataFim);
+    if (existente) {
+      const updated = await this.prisma.subscription.update({
+        where: { id: existente.id },
+        data: {
+          planoId: dto.planoId,
+          dataInicio,
+          dataFim,
+          status: statusFinal,
+        },
+        include,
+      });
+
+      return this.present(updated);
+    }
 
     const created = await this.prisma.subscription.create({
       data: {
@@ -86,10 +98,11 @@ export class SubscriptionsService {
         planoId: dto.planoId,
         dataInicio,
         dataFim,
-        status: dto.status,
+        status: statusFinal,
       },
       include,
     });
+
     return this.present(created);
   }
 
@@ -103,7 +116,7 @@ export class SubscriptionsService {
             : { not: SubscriptionStatus.CANCELADA },
       },
       include,
-      orderBy: { criadoEm: 'desc' },
+      orderBy: { id: 'desc' },
     });
     const apresentadas = lista.map((s) => this.present(s));
     return filtros.status
@@ -127,6 +140,9 @@ export class SubscriptionsService {
   async update(id: number, dto: UpdateSubscriptionDto) {
     const atual = await this.find(id);
 
+    let dataInicioFinal = dto.dataInicio ?? atual.dataInicio;
+    let dataFimFinal = dto.dataFim ?? atual.dataFim;
+
     if (dto.planoId) {
       const plan = await this.prisma.plan.findUnique({
         where: { id: dto.planoId },
@@ -134,27 +150,31 @@ export class SubscriptionsService {
       if (!plan || !plan.ativo) {
         throw new BadRequestException('Plano não encontrado ou inativo');
       }
+
+      if (!dto.dataInicio) {
+        dataInicioFinal = this.hoje();
+      }
+      if (!dto.dataFim) {
+        dataFimFinal = this.addMonths(dataInicioFinal, plan.duracaoMeses);
+      }
     }
 
-    this.checkDates(
-      dto.dataInicio ?? atual.dataInicio,
-      dto.dataFim ?? atual.dataFim,
-    );
+    this.checkDates(dataInicioFinal, dataFimFinal);
 
     const updated = await this.prisma.subscription.update({
       where: { id },
       data: {
         planoId: dto.planoId,
-        dataInicio: dto.dataInicio,
-        dataFim: dto.dataFim,
+        dataInicio: dto.planoId || dto.dataInicio ? dataInicioFinal : undefined,
+        dataFim: dto.planoId || dto.dataFim ? dataFimFinal : undefined,
         status: dto.status,
       },
       include,
     });
+
     return this.present(updated);
   }
 
-  // Cancelamento lógico: não apaga, só marca como cancelada
   async remove(id: number) {
     await this.find(id);
     return this.prisma.subscription.update({

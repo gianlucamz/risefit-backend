@@ -6,7 +6,10 @@ import {
   Body,
   Patch,
   Param,
-  Delete, ParseIntPipe
+  Delete,
+  ParseIntPipe,
+  HttpCode,
+  HttpStatus,
 } from '@nestjs/common';
 
 import { UsersService } from './users.service.js';
@@ -14,11 +17,18 @@ import { createUserSchema } from './dto/create-user.dto.js';
 import type { CreateUserDto } from './dto/create-user.dto.js';
 import { updateUserSchema } from './dto/update-user.dto.js';
 import type { UpdateUserDto } from './dto/update-user.dto.js';
+import { loginSchema, type LoginDto } from './dto/login.dto.js';
 import { ZodValidationPipe } from '../common/zod-validation.pipe.js';
 
 @Controller('users')
 export class UsersController {
   constructor(private readonly usersService: UsersService) { }
+
+  @Post('login')
+  @HttpCode(HttpStatus.OK)
+  login(@Body(new ZodValidationPipe(loginSchema)) dto: LoginDto) {
+    return this.usersService.login(dto);
+  }
 
   @Post()
   create(

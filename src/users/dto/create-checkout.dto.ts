@@ -9,6 +9,7 @@ export const createUserSchema = z.object({
     cpf: z.string().min(11, 'CPF inválido').max(14),
     sexo: z.string().min(1, 'Sexo é obrigatório'),
     cargo: z.enum(['ALUNO', 'PROFISSIONAL', 'ADMIN']).optional().default('ALUNO'),
+    planoId: z.coerce.number().int().positive().optional(),
 });
 
 export const createEnderecoSchema = z.object({
@@ -24,7 +25,9 @@ export const createEnderecoSchema = z.object({
 export const createPagamentoSchema = z.object({
     token: z.string().min(1, 'Token de pagamento é obrigatório'),
     bandeira: z.string().min(1, 'Bandeira é obrigatória'),
-    ultimosDigitos: z.string().length(4, 'Últimos dígitos devem conter 4 caracteres'),
+    ultimosDigitos: z
+        .string()
+        .length(4, 'Últimos dígitos devem conter 4 caracteres'),
 });
 
 export const createCheckoutSchema = z.object({
@@ -32,6 +35,8 @@ export const createCheckoutSchema = z.object({
     endereco: createEnderecoSchema,
     formaPagamento: z.enum(['credito', 'debito']),
     pagamento: createPagamentoSchema,
+    planoId: z.coerce.number().int().positive().optional(),
+    planoNome: z.string().optional(),
 });
 
 export type CreateUserDto = z.infer<typeof createUserSchema>;
