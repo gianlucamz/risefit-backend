@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { Prisma } from '../generated/prisma/client.js';
-import { OrderStatus } from '../generated/prisma/enums.js';
+import { OrderStatus, SubscriptionStatus } from '../generated/prisma/enums.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import type { CreateCheckoutDto } from '../users/dto/create-checkout.dto.js';
 import type { CreateOrderDto } from './dto/create-order.dto.js';
@@ -36,7 +36,7 @@ const orderInclude = {
 
 @Injectable()
 export class OrdersService {
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(private readonly prisma: PrismaService) {}
 
   private validateId(id: number): number {
     if (!Number.isSafeInteger(id) || id <= 0) {
@@ -75,6 +75,27 @@ export class OrdersService {
 
     try {
       return await this.prisma.$transaction(async (tx) => {
+        const planoIdFinal = dto.planoId ?? dto.usuario.planoId;
+        let planoEncontrado = planoIdFinal
+          ? await tx.plan.findUnique({ where: { id: planoIdFinal } })
+          : null;
+
+        if (!planoEncontrado && dto.planoNome) {
+          planoEncontrado = await tx.plan.findFirst({
+            where: {
+              nome: { contains: dto.planoNome },
+              ativo: true,
+            },
+          });
+        }
+
+        if (!planoEncontrado) {
+          planoEncontrado = await tx.plan.findFirst({
+            where: { ativo: true },
+            orderBy: { id: 'asc' },
+          });
+        }
+
         let usuario = usuarioExistente;
         if (!usuario) {
           usuario = await tx.user.create({
@@ -104,12 +125,16 @@ export class OrdersService {
           },
         });
 
+        const totalPedido = planoEncontrado
+          ? planoEncontrado.preco
+          : new Prisma.Decimal(99.9);
+
         const pedido = await tx.order.create({
           data: {
             usuarioId: usuario.id,
             formaPagamento: dto.formaPagamento,
             status: OrderStatus.CONFIRMADO,
-            total: new Prisma.Decimal(99.90), 
+            total: totalPedido,
           },
         });
 
@@ -122,16 +147,52 @@ export class OrdersService {
           },
         });
 
+        let assinaturaCriada = null;
+        if (planoEncontrado) {
+          await tx.subscription.updateMany({
+            where: {
+              usuarioId: usuario.id,
+              status: { not: SubscriptionStatus.CANCELADA },
+            },
+            data: { status: SubscriptionStatus.CANCELADA },
+          });
+
+          const hoje = new Date();
+          hoje.setUTCHours(0, 0, 0, 0);
+          const dataFim = new Date(hoje);
+          dataFim.setUTCMonth(
+            dataFim.getUTCMonth() + planoEncontrado.duracaoMeses,
+          );
+
+          assinaturaCriada = await tx.subscription.create({
+            data: {
+              usuarioId: usuario.id,
+              planoId: planoEncontrado.id,
+              dataInicio: hoje,
+              dataFim,
+              status: SubscriptionStatus.ATIVA,
+            },
+            include: {
+              plano: true,
+            },
+          });
+        }
+
         return {
           mensagem: 'Checkout e cadastro realizados com sucesso!',
           usuarioId: usuario.id,
           pedidoId: pedido.id,
+          planoId: planoEncontrado?.id,
+          plano: planoEncontrado,
+          assinatura: assinaturaCriada,
         };
       });
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError) {
         if (error.code === 'P2002') {
-          throw new ConflictException('Já existe um registro com estes dados únicos');
+          throw new ConflictException(
+            'Já existe um registro com estes dados únicos',
+          );
         }
       }
 
@@ -188,7 +249,9 @@ export class OrdersService {
       const product = productMap.get(item.produtoId)!;
 
       if (!product.ativo) {
-        throw new BadRequestException(`O produto "${product.nome}" está inativo`);
+        throw new BadRequestException(
+          `O produto "${product.nome}" está inativo`,
+        );
       }
 
       if (product.estoque < item.quantidade) {
@@ -301,7 +364,9 @@ export class OrdersService {
     return await this.prisma.$transaction(async (tx) => {
       if (dto.itens !== undefined) {
         if (dto.itens.length === 0) {
-          throw new BadRequestException('O pedido deve conter pelo menos um item');
+          throw new BadRequestException(
+            'O pedido deve conter pelo menos um item',
+          );
         }
 
         const productIds = dto.itens.map((item) => item.produtoId);
@@ -349,10 +414,15 @@ export class OrdersService {
           const product = productMap.get(item.produtoId)!;
 
           if (!product.ativo) {
-            throw new BadRequestException(`O produto "${product.nome}" está inativo`);
+            throw new BadRequestException(
+              `O produto "${product.nome}" está inativo`,
+            );
           }
 
-          if (targetStatus !== OrderStatus.CANCELADO && product.estoque < item.quantidade) {
+          if (
+            targetStatus !== OrderStatus.CANCELADO &&
+            product.estoque < item.quantidade
+          ) {
             throw new BadRequestException(
               `Estoque insuficiente para o produto "${product.nome}". Disponível: ${product.estoque}, Solicitado: ${item.quantidade}`,
             );
@@ -409,8 +479,7 @@ export class OrdersService {
               data: { estoque: { increment: item.quantidade } },
             });
           }
-        }
-        else if (currentOrder.status === OrderStatus.CANCELADO) {
+        } else if (currentOrder.status === OrderStatus.CANCELADO) {
           for (const item of currentOrder.itens) {
             const product = await tx.product.findUnique({
               where: { id: item.produtoId },
