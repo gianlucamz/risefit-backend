@@ -9,6 +9,7 @@ export const createUserSchema = z.object({
   cpf: z.string().max(14).optional(),
   sexo: z.string().max(20).optional(),
   cargo: z.enum(['ALUNO', 'PROFISSIONAL', 'ADMIN']).optional(),
+  planoId: z.number().int().positive().optional(),
 });
 
 export type CreateUserDto = z.infer<typeof createUserSchema>;
