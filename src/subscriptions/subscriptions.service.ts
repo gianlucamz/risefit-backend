@@ -9,13 +9,13 @@ import type { CreateSubscriptionDto } from './dto/create-subscription.dto.js';
 import type { UpdateSubscriptionDto } from './dto/update-subscription.dto.js';
 
 const include = {
-  usuario: { select: { id: true, nome: true, email: true } },
+  usuario: { select: { id: true, nome: true, email: true, cpf: true, telefone: true } },
   plano: true,
 };
 
 @Injectable()
 export class SubscriptionsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
   private hoje(): Date {
     const d = new Date();
@@ -63,33 +63,37 @@ export class SubscriptionsService {
       throw new BadRequestException('Plano não encontrado ou inativo');
     }
 
+    const statusFinal = dto.status ?? SubscriptionStatus.PENDENTE;
     const dataInicio = dto.dataInicio ?? this.hoje();
     const dataFim =
-      dto.dataFim ?? this.addMonths(dataInicio, plan.duracaoMeses);
+      statusFinal === SubscriptionStatus.ATIVA
+        ? (dto.dataFim ?? this.addMonths(dataInicio, plan.duracaoMeses))
+        : (dto.dataFim ?? null);
+
     this.checkDates(dataInicio, dataFim);
 
-    const statusFinal = dto.status ?? SubscriptionStatus.ATIVA;
-
-    const existente = await this.prisma.subscription.findFirst({
-      where: {
-        usuarioId: dto.usuarioId,
-        status: { not: SubscriptionStatus.CANCELADA },
-      },
-    });
-
-    if (existente) {
-      const updated = await this.prisma.subscription.update({
-        where: { id: existente.id },
-        data: {
-          planoId: dto.planoId,
-          dataInicio,
-          dataFim,
-          status: statusFinal,
+    if (statusFinal === SubscriptionStatus.PENDENTE) {
+      const pendenteExistente = await this.prisma.subscription.findFirst({
+        where: {
+          usuarioId: dto.usuarioId,
+          status: SubscriptionStatus.PENDENTE,
         },
-        include,
       });
 
-      return this.present(updated);
+      if (pendenteExistente) {
+        const updated = await this.prisma.subscription.update({
+          where: { id: pendenteExistente.id },
+          data: {
+            planoId: dto.planoId,
+            dataInicio: this.hoje(),
+            dataFim: null,
+            status: SubscriptionStatus.PENDENTE,
+          },
+          include,
+        });
+
+        return this.present(updated);
+      }
     }
 
     const created = await this.prisma.subscription.create({
@@ -107,19 +111,24 @@ export class SubscriptionsService {
   }
 
   async findAll(filtros: { usuarioId?: number; status?: string }) {
+    const whereStatus =
+      !filtros.status || filtros.status === 'TODAS'
+        ? undefined
+        : filtros.status === SubscriptionStatus.CANCELADA
+          ? SubscriptionStatus.CANCELADA
+          : { not: SubscriptionStatus.CANCELADA };
+
     const lista = await this.prisma.subscription.findMany({
       where: {
         usuarioId: filtros.usuarioId,
-        status:
-          filtros.status === SubscriptionStatus.CANCELADA
-            ? SubscriptionStatus.CANCELADA
-            : { not: SubscriptionStatus.CANCELADA },
+        status: whereStatus,
       },
       include,
       orderBy: { id: 'desc' },
     });
+
     const apresentadas = lista.map((s) => this.present(s));
-    return filtros.status
+    return filtros.status && filtros.status !== 'TODAS'
       ? apresentadas.filter((s) => s.status === filtros.status)
       : apresentadas;
   }
@@ -139,21 +148,29 @@ export class SubscriptionsService {
 
   async update(id: number, dto: UpdateSubscriptionDto) {
     const atual = await this.find(id);
+    const planoIdEfetivo = dto.planoId ?? atual.planoId;
+
+    const plan = await this.prisma.plan.findUnique({
+      where: { id: planoIdEfetivo },
+    });
+    if (!plan || !plan.ativo) {
+      throw new BadRequestException('Plano não encontrado ou inativo');
+    }
 
     let dataInicioFinal = dto.dataInicio ?? atual.dataInicio;
     let dataFimFinal = dto.dataFim ?? atual.dataFim;
 
-    if (dto.planoId) {
-      const plan = await this.prisma.plan.findUnique({
-        where: { id: dto.planoId },
-      });
-      if (!plan || !plan.ativo) {
-        throw new BadRequestException('Plano não encontrado ou inativo');
-      }
+    const aprovandoPendente =
+      dto.status === SubscriptionStatus.ATIVA &&
+      atual.status === SubscriptionStatus.PENDENTE;
 
-      if (!dto.dataInicio) {
-        dataInicioFinal = this.hoje();
-      }
+    // Ao aprovar uma inscrição PENDENTE -> ATIVA, inicia o ciclo a partir de hoje
+    if (aprovandoPendente) {
+      dataInicioFinal = dto.dataInicio ?? this.hoje();
+      dataFimFinal =
+        dto.dataFim ?? this.addMonths(dataInicioFinal, plan.duracaoMeses);
+    } else if (dto.planoId) {
+      if (!dto.dataInicio) dataInicioFinal = this.hoje();
       if (!dto.dataFim) {
         dataFimFinal = this.addMonths(dataInicioFinal, plan.duracaoMeses);
       }
@@ -161,15 +178,63 @@ export class SubscriptionsService {
 
     this.checkDates(dataInicioFinal, dataFimFinal);
 
-    const updated = await this.prisma.subscription.update({
-      where: { id },
-      data: {
-        planoId: dto.planoId,
-        dataInicio: dto.planoId || dto.dataInicio ? dataInicioFinal : undefined,
-        dataFim: dto.planoId || dto.dataFim ? dataFimFinal : undefined,
-        status: dto.status,
-      },
-      include,
+    const updated = await this.prisma.$transaction(async (tx) => {
+      if (aprovandoPendente) {
+        const outraAtiva = await tx.subscription.findFirst({
+          where: {
+            usuarioId: atual.usuarioId,
+            id: { not: id },
+            status: SubscriptionStatus.ATIVA,
+          },
+        });
+
+        // Cancelamento: solicitação PENDENTE com o mesmo planoId da assinatura ATIVA
+        if (outraAtiva && outraAtiva.planoId === atual.planoId) {
+          await tx.subscription.updateMany({
+            where: {
+              usuarioId: atual.usuarioId,
+              id: { not: id },
+              status: SubscriptionStatus.ATIVA,
+            },
+            data: { status: SubscriptionStatus.CANCELADA },
+          });
+
+          return tx.subscription.update({
+            where: { id },
+            data: { status: SubscriptionStatus.CANCELADA },
+            include,
+          });
+        }
+
+        // Troca de plano: encerra assinatura ATIVA anterior antes de ativar a nova
+        if (outraAtiva) {
+          await tx.subscription.updateMany({
+            where: {
+              usuarioId: atual.usuarioId,
+              id: { not: id },
+              status: SubscriptionStatus.ATIVA,
+            },
+            data: { status: SubscriptionStatus.CANCELADA },
+          });
+        }
+      }
+
+      return tx.subscription.update({
+        where: { id },
+        data: {
+          planoId: dto.planoId,
+          dataInicio:
+            dto.planoId || dto.dataInicio || aprovandoPendente
+              ? dataInicioFinal
+              : undefined,
+          dataFim:
+            dto.planoId || dto.dataFim || aprovandoPendente
+              ? dataFimFinal
+              : undefined,
+          status: dto.status,
+        },
+        include,
+      });
     });
 
     return this.present(updated);
