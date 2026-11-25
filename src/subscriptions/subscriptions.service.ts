@@ -180,14 +180,43 @@ export class SubscriptionsService {
 
     const updated = await this.prisma.$transaction(async (tx) => {
       if (aprovandoPendente) {
-        await tx.subscription.updateMany({
+        const outraAtiva = await tx.subscription.findFirst({
           where: {
             usuarioId: atual.usuarioId,
             id: { not: id },
             status: SubscriptionStatus.ATIVA,
           },
-          data: { status: SubscriptionStatus.CANCELADA },
         });
+
+        // Cancelamento: solicitação PENDENTE com o mesmo planoId da assinatura ATIVA
+        if (outraAtiva && outraAtiva.planoId === atual.planoId) {
+          await tx.subscription.updateMany({
+            where: {
+              usuarioId: atual.usuarioId,
+              id: { not: id },
+              status: SubscriptionStatus.ATIVA,
+            },
+            data: { status: SubscriptionStatus.CANCELADA },
+          });
+
+          return tx.subscription.update({
+            where: { id },
+            data: { status: SubscriptionStatus.CANCELADA },
+            include,
+          });
+        }
+
+        // Troca de plano: encerra assinatura ATIVA anterior antes de ativar a nova
+        if (outraAtiva) {
+          await tx.subscription.updateMany({
+            where: {
+              usuarioId: atual.usuarioId,
+              id: { not: id },
+              status: SubscriptionStatus.ATIVA,
+            },
+            data: { status: SubscriptionStatus.CANCELADA },
+          });
+        }
       }
 
       return tx.subscription.update({
