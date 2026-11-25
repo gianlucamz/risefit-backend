@@ -48,6 +48,9 @@ export class UsersService {
         }
       }
 
+      const cpfLimpo = dto.cpf?.trim() ? dto.cpf.trim() : undefined;
+      const sexoLimpo = dto.sexo?.trim() ? dto.sexo.trim() : undefined;
+
       const createdUser = await this.prisma.user.create({
         data: {
           nome: dto.nome,
@@ -55,9 +58,24 @@ export class UsersService {
           senha: hashedPassword,
           dataNascimento: new Date(dto.dataNascimento),
           telefone: dto.telefone,
-          ...(dto.cpf !== undefined && { cpf: dto.cpf }),
-          ...(dto.sexo !== undefined && { sexo: dto.sexo }),
+          ...(cpfLimpo !== undefined && { cpf: cpfLimpo }),
+          ...(sexoLimpo !== undefined && { sexo: sexoLimpo }),
           ...(dto.cargo !== undefined && { cargo: dto.cargo }),
+          ...(dto.endereco && {
+            enderecos: {
+              create: {
+                cep: dto.endereco.cep,
+                estado: dto.endereco.estado,
+                cidade: dto.endereco.cidade,
+                bairro: dto.endereco.bairro,
+                rua: dto.endereco.rua,
+                numero: dto.endereco.numero,
+                ...(dto.endereco.complemento !== undefined && {
+                  complemento: dto.endereco.complemento,
+                }),
+              },
+            },
+          }),
         },
         include: userInclude,
         omit: {
@@ -68,16 +86,14 @@ export class UsersService {
       if (plan) {
         const hoje = new Date();
         hoje.setUTCHours(0, 0, 0, 0);
-        const dataFim = new Date(hoje);
-        dataFim.setUTCMonth(dataFim.getUTCMonth() + plan.duracaoMeses);
 
         await this.prisma.subscription.create({
           data: {
             usuarioId: createdUser.id,
             planoId: plan.id,
             dataInicio: hoje,
-            dataFim,
-            status: SubscriptionStatus.ATIVA,
+            dataFim: null,
+            status: SubscriptionStatus.PENDENTE,
           },
         });
 

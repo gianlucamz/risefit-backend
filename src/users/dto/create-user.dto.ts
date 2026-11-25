@@ -1,5 +1,15 @@
 import { z } from 'zod';
 
+export const createUserAddressSchema = z.object({
+  cep: z.string().min(8, 'CEP inválido').max(9),
+  estado: z.string().length(2, 'Estado deve ter 2 letras'),
+  cidade: z.string().min(1, 'Cidade é obrigatória').max(100),
+  bairro: z.string().min(1, 'Bairro é obrigatório').max(100),
+  rua: z.string().min(1, 'Rua é obrigatória').max(150),
+  numero: z.string().min(1, 'Número é obrigatório').max(20),
+  complemento: z.string().max(100).optional(),
+});
+
 export const createUserSchema = z.object({
   nome: z.string().min(1, 'Nome é obrigatório').max(100),
   email: z.string().email('E-mail inválido').max(150),
@@ -10,6 +20,7 @@ export const createUserSchema = z.object({
   sexo: z.string().max(20).optional(),
   cargo: z.enum(['ALUNO', 'PROFISSIONAL', 'ADMIN']).optional(),
   planoId: z.number().int().positive().optional(),
+  endereco: createUserAddressSchema.optional(),
 });
 
 export type CreateUserDto = z.infer<typeof createUserSchema>;

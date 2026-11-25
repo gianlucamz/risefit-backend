@@ -9,13 +9,13 @@ import type { CreateSubscriptionDto } from './dto/create-subscription.dto.js';
 import type { UpdateSubscriptionDto } from './dto/update-subscription.dto.js';
 
 const include = {
-  usuario: { select: { id: true, nome: true, email: true } },
+  usuario: { select: { id: true, nome: true, email: true, cpf: true, telefone: true } },
   plano: true,
 };
 
 @Injectable()
 export class SubscriptionsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
   private hoje(): Date {
     const d = new Date();
@@ -63,12 +63,14 @@ export class SubscriptionsService {
       throw new BadRequestException('Plano não encontrado ou inativo');
     }
 
+    const statusFinal = dto.status ?? SubscriptionStatus.PENDENTE;
     const dataInicio = dto.dataInicio ?? this.hoje();
     const dataFim =
-      dto.dataFim ?? this.addMonths(dataInicio, plan.duracaoMeses);
-    this.checkDates(dataInicio, dataFim);
+      statusFinal === SubscriptionStatus.ATIVA
+        ? (dto.dataFim ?? this.addMonths(dataInicio, plan.duracaoMeses))
+        : (dto.dataFim ?? null);
 
-    const statusFinal = dto.status ?? SubscriptionStatus.ATIVA;
+    this.checkDates(dataInicio, dataFim);
 
     const existente = await this.prisma.subscription.findFirst({
       where: {
@@ -107,19 +109,24 @@ export class SubscriptionsService {
   }
 
   async findAll(filtros: { usuarioId?: number; status?: string }) {
+    const whereStatus =
+      !filtros.status || filtros.status === 'TODAS'
+        ? undefined
+        : filtros.status === SubscriptionStatus.CANCELADA
+          ? SubscriptionStatus.CANCELADA
+          : { not: SubscriptionStatus.CANCELADA };
+
     const lista = await this.prisma.subscription.findMany({
       where: {
         usuarioId: filtros.usuarioId,
-        status:
-          filtros.status === SubscriptionStatus.CANCELADA
-            ? SubscriptionStatus.CANCELADA
-            : { not: SubscriptionStatus.CANCELADA },
+        status: whereStatus,
       },
       include,
       orderBy: { id: 'desc' },
     });
+
     const apresentadas = lista.map((s) => this.present(s));
-    return filtros.status
+    return filtros.status && filtros.status !== 'TODAS'
       ? apresentadas.filter((s) => s.status === filtros.status)
       : apresentadas;
   }
@@ -139,21 +146,28 @@ export class SubscriptionsService {
 
   async update(id: number, dto: UpdateSubscriptionDto) {
     const atual = await this.find(id);
+    const planoIdEfetivo = dto.planoId ?? atual.planoId;
+
+    const plan = await this.prisma.plan.findUnique({
+      where: { id: planoIdEfetivo },
+    });
+    if (!plan || !plan.ativo) {
+      throw new BadRequestException('Plano não encontrado ou inativo');
+    }
 
     let dataInicioFinal = dto.dataInicio ?? atual.dataInicio;
     let dataFimFinal = dto.dataFim ?? atual.dataFim;
 
-    if (dto.planoId) {
-      const plan = await this.prisma.plan.findUnique({
-        where: { id: dto.planoId },
-      });
-      if (!plan || !plan.ativo) {
-        throw new BadRequestException('Plano não encontrado ou inativo');
-      }
-
-      if (!dto.dataInicio) {
-        dataInicioFinal = this.hoje();
-      }
+    // Ao aprovar uma inscrição PENDENTE -> ATIVA, inicia o ciclo a partir de hoje
+    if (
+      dto.status === SubscriptionStatus.ATIVA &&
+      atual.status === SubscriptionStatus.PENDENTE
+    ) {
+      dataInicioFinal = dto.dataInicio ?? this.hoje();
+      dataFimFinal =
+        dto.dataFim ?? this.addMonths(dataInicioFinal, plan.duracaoMeses);
+    } else if (dto.planoId) {
+      if (!dto.dataInicio) dataInicioFinal = this.hoje();
       if (!dto.dataFim) {
         dataFimFinal = this.addMonths(dataInicioFinal, plan.duracaoMeses);
       }
@@ -165,8 +179,20 @@ export class SubscriptionsService {
       where: { id },
       data: {
         planoId: dto.planoId,
-        dataInicio: dto.planoId || dto.dataInicio ? dataInicioFinal : undefined,
-        dataFim: dto.planoId || dto.dataFim ? dataFimFinal : undefined,
+        dataInicio:
+          dto.planoId ||
+            dto.dataInicio ||
+            (dto.status === SubscriptionStatus.ATIVA &&
+              atual.status === SubscriptionStatus.PENDENTE)
+            ? dataInicioFinal
+            : undefined,
+        dataFim:
+          dto.planoId ||
+            dto.dataFim ||
+            (dto.status === SubscriptionStatus.ATIVA &&
+              atual.status === SubscriptionStatus.PENDENTE)
+            ? dataFimFinal
+            : undefined,
         status: dto.status,
       },
       include,
