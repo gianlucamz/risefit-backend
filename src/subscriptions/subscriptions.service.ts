@@ -72,26 +72,28 @@ export class SubscriptionsService {
 
     this.checkDates(dataInicio, dataFim);
 
-    const existente = await this.prisma.subscription.findFirst({
-      where: {
-        usuarioId: dto.usuarioId,
-        status: { not: SubscriptionStatus.CANCELADA },
-      },
-    });
-
-    if (existente) {
-      const updated = await this.prisma.subscription.update({
-        where: { id: existente.id },
-        data: {
-          planoId: dto.planoId,
-          dataInicio,
-          dataFim,
-          status: statusFinal,
+    if (statusFinal === SubscriptionStatus.PENDENTE) {
+      const pendenteExistente = await this.prisma.subscription.findFirst({
+        where: {
+          usuarioId: dto.usuarioId,
+          status: SubscriptionStatus.PENDENTE,
         },
-        include,
       });
 
-      return this.present(updated);
+      if (pendenteExistente) {
+        const updated = await this.prisma.subscription.update({
+          where: { id: pendenteExistente.id },
+          data: {
+            planoId: dto.planoId,
+            dataInicio: this.hoje(),
+            dataFim: null,
+            status: SubscriptionStatus.PENDENTE,
+          },
+          include,
+        });
+
+        return this.present(updated);
+      }
     }
 
     const created = await this.prisma.subscription.create({
@@ -158,11 +160,12 @@ export class SubscriptionsService {
     let dataInicioFinal = dto.dataInicio ?? atual.dataInicio;
     let dataFimFinal = dto.dataFim ?? atual.dataFim;
 
-    // Ao aprovar uma inscrição PENDENTE -> ATIVA, inicia o ciclo a partir de hoje
-    if (
+    const aprovandoPendente =
       dto.status === SubscriptionStatus.ATIVA &&
-      atual.status === SubscriptionStatus.PENDENTE
-    ) {
+      atual.status === SubscriptionStatus.PENDENTE;
+
+    // Ao aprovar uma inscrição PENDENTE -> ATIVA, inicia o ciclo a partir de hoje
+    if (aprovandoPendente) {
       dataInicioFinal = dto.dataInicio ?? this.hoje();
       dataFimFinal =
         dto.dataFim ?? this.addMonths(dataInicioFinal, plan.duracaoMeses);
@@ -175,27 +178,34 @@ export class SubscriptionsService {
 
     this.checkDates(dataInicioFinal, dataFimFinal);
 
-    const updated = await this.prisma.subscription.update({
-      where: { id },
-      data: {
-        planoId: dto.planoId,
-        dataInicio:
-          dto.planoId ||
-            dto.dataInicio ||
-            (dto.status === SubscriptionStatus.ATIVA &&
-              atual.status === SubscriptionStatus.PENDENTE)
-            ? dataInicioFinal
-            : undefined,
-        dataFim:
-          dto.planoId ||
-            dto.dataFim ||
-            (dto.status === SubscriptionStatus.ATIVA &&
-              atual.status === SubscriptionStatus.PENDENTE)
-            ? dataFimFinal
-            : undefined,
-        status: dto.status,
-      },
-      include,
+    const updated = await this.prisma.$transaction(async (tx) => {
+      if (aprovandoPendente) {
+        await tx.subscription.updateMany({
+          where: {
+            usuarioId: atual.usuarioId,
+            id: { not: id },
+            status: SubscriptionStatus.ATIVA,
+          },
+          data: { status: SubscriptionStatus.CANCELADA },
+        });
+      }
+
+      return tx.subscription.update({
+        where: { id },
+        data: {
+          planoId: dto.planoId,
+          dataInicio:
+            dto.planoId || dto.dataInicio || aprovandoPendente
+              ? dataInicioFinal
+              : undefined,
+          dataFim:
+            dto.planoId || dto.dataFim || aprovandoPendente
+              ? dataFimFinal
+              : undefined,
+          status: dto.status,
+        },
+        include,
+      });
     });
 
     return this.present(updated);
