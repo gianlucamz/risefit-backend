@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import bcrypt from 'bcrypt';
 import { Prisma, SubscriptionStatus } from '../generated/prisma/client.js';
+import { ESTADO_ATENDIMENTO } from '../common/constants/regiao-atendimento.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import type { CreateUserDto } from './dto/create-user.dto.js';
 import type { UpdateUserDto } from './dto/update-user.dto.js';
@@ -65,7 +66,7 @@ export class UsersService {
             enderecos: {
               create: {
                 cep: dto.endereco.cep,
-                estado: dto.endereco.estado,
+                estado: dto.endereco.estado || ESTADO_ATENDIMENTO,
                 cidade: dto.endereco.cidade,
                 bairro: dto.endereco.bairro,
                 rua: dto.endereco.rua,
@@ -200,8 +201,15 @@ export class UsersService {
       throw new NotFoundException('Usuário não encontrado');
     }
 
-    const { dataNascimento, senha, senhaAtual, novaSenha, planoId, ...dados } =
-      dto;
+    const {
+      dataNascimento,
+      senha,
+      senhaAtual,
+      novaSenha,
+      planoId,
+      endereco,
+      ...dados
+    } = dto;
 
     let senhaFinalHash: string | undefined = undefined;
 
@@ -225,6 +233,21 @@ export class UsersService {
       }),
       ...(senhaFinalHash !== undefined && {
         senha: senhaFinalHash,
+      }),
+      ...(endereco && {
+        enderecos: {
+          create: {
+            cep: endereco.cep,
+            estado: endereco.estado || ESTADO_ATENDIMENTO,
+            cidade: endereco.cidade,
+            bairro: endereco.bairro,
+            rua: endereco.rua,
+            numero: endereco.numero,
+            ...(endereco.complemento !== undefined && {
+              complemento: endereco.complemento,
+            }),
+          },
+        },
       }),
     };
 

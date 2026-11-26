@@ -1,4 +1,8 @@
 import { z } from 'zod';
+import {
+  CIDADES_VALE_PARAIBA,
+  ESTADO_ATENDIMENTO,
+} from '../../common/constants/regiao-atendimento.js';
 
 export const createUserSchema = z.object({
     nome: z.string().min(1, 'Nome é obrigatório').max(100),
@@ -14,8 +18,33 @@ export const createUserSchema = z.object({
 
 export const createEnderecoSchema = z.object({
     cep: z.string().min(8, 'CEP inválido').max(9),
-    estado: z.string().length(2, 'Estado deve ter 2 letras'),
-    cidade: z.string().min(1, 'Cidade é obrigatória'),
+    estado: z
+        .string()
+        .trim()
+        .toUpperCase()
+        .default(ESTADO_ATENDIMENTO)
+        .refine((val) => val === ESTADO_ATENDIMENTO, {
+            message: 'Atendimento disponível apenas para o estado de São Paulo (SP).',
+        }),
+    cidade: z
+        .string()
+        .trim()
+        .refine(
+            (val) =>
+                CIDADES_VALE_PARAIBA.some(
+                    (c) => c.toLowerCase() === val.toLowerCase(),
+                ),
+            {
+                message:
+                    'Cidade fora da área de atendimento (Vale do Paraíba e Litoral Norte - SP).',
+            },
+        )
+        .transform(
+            (val) =>
+                CIDADES_VALE_PARAIBA.find(
+                    (c) => c.toLowerCase() === val.toLowerCase(),
+                ) ?? val,
+        ),
     bairro: z.string().min(1, 'Bairro é obrigatório'),
     rua: z.string().min(1, 'Rua é obrigatória'),
     numero: z.string().min(1, 'Número é obrigatório'),
