@@ -3,14 +3,24 @@ import {
   NotFoundException,
   BadRequestException,
   ConflictException,
+  UnauthorizedException,
 } from '@nestjs/common';
 import bcrypt from 'bcrypt';
-import { Prisma } from '../generated/prisma/client.js';
+import { Prisma, SubscriptionStatus } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import type { CreateUserDto } from './dto/create-user.dto.js';
 import type { UpdateUserDto } from './dto/update-user.dto.js';
+import type { LoginDto } from './dto/login.dto.js';
 
 const SALT_ROUNDS = 10;
+
+const userInclude = {
+  assinaturas: {
+    include: { plano: true },
+    orderBy: { id: 'desc' as const },
+  },
+  enderecos: true,
+};
 
 @Injectable()
 export class UsersService {
@@ -28,24 +38,63 @@ export class UsersService {
     try {
       const hashedPassword = await bcrypt.hash(dto.senha, SALT_ROUNDS);
 
-      return await this.prisma.user.create({
+      let plan = null;
+      if (dto.planoId !== undefined) {
+        plan = await this.prisma.plan.findUnique({
+          where: { id: dto.planoId },
+        });
+        if (!plan || !plan.ativo) {
+          throw new BadRequestException('Plano não encontrado ou inativo');
+        }
+      }
+
+      const createdUser = await this.prisma.user.create({
         data: {
           nome: dto.nome,
           email: dto.email,
           senha: hashedPassword,
           dataNascimento: new Date(dto.dataNascimento),
           telefone: dto.telefone,
-          ...(dto.cargo !== undefined && {
-            cargo: dto.cargo,
-          }),
+          ...(dto.cpf !== undefined && { cpf: dto.cpf }),
+          ...(dto.sexo !== undefined && { sexo: dto.sexo }),
+          ...(dto.cargo !== undefined && { cargo: dto.cargo }),
         },
+        include: userInclude,
         omit: {
           senha: true,
         },
       });
+
+      if (plan) {
+        const hoje = new Date();
+        hoje.setUTCHours(0, 0, 0, 0);
+        const dataFim = new Date(hoje);
+        dataFim.setUTCMonth(dataFim.getUTCMonth() + plan.duracaoMeses);
+
+        await this.prisma.subscription.create({
+          data: {
+            usuarioId: createdUser.id,
+            planoId: plan.id,
+            dataInicio: hoje,
+            dataFim,
+            status: SubscriptionStatus.ATIVA,
+          },
+        });
+
+        return await this.findOne(createdUser.id);
+      }
+
+      return createdUser;
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError) {
         if (error.code === 'P2002') {
+          const target = error.meta?.target;
+          if (
+            (Array.isArray(target) && target.includes('cpf')) ||
+            (typeof target === 'string' && target.includes('cpf'))
+          ) {
+            throw new ConflictException('Este CPF já está cadastrado');
+          }
           throw new ConflictException('Este e-mail já está cadastrado');
         }
         if (error.code === 'P2025') {
@@ -57,8 +106,48 @@ export class UsersService {
     }
   }
 
+  async login(dto: LoginDto) {
+    const identificador = dto.identificador.trim();
+    let usuario;
+
+    if (identificador.includes('@')) {
+      usuario = await this.prisma.user.findUnique({
+        where: { email: identificador.toLowerCase() },
+        include: userInclude,
+      });
+    } else {
+      const cpfLimpo = identificador.replace(/\D/g, '');
+      usuario = await this.prisma.user.findFirst({
+        where: {
+          OR: [
+            { cpf: identificador },
+            { cpf: cpfLimpo },
+            { email: identificador },
+          ],
+        },
+        include: userInclude,
+      });
+    }
+
+    if (!usuario) {
+      throw new UnauthorizedException('E-mail ou senha incorretos');
+    }
+
+    const senhaValida = await bcrypt.compare(dto.senha, usuario.senha);
+    if (!senhaValida) {
+      throw new UnauthorizedException('E-mail ou senha incorretos');
+    }
+
+    const { senha: _, ...usuarioSemSenha } = usuario;
+    return {
+      usuario: usuarioSemSenha,
+      token: `risefit_token_${usuario.id}_${Date.now()}`,
+    };
+  }
+
   findAll() {
     return this.prisma.user.findMany({
+      include: userInclude,
       omit: {
         senha: true,
       },
@@ -71,6 +160,7 @@ export class UsersService {
 
     const usuario = await this.prisma.user.findUnique({
       where: { id: usuarioId },
+      include: userInclude,
       omit: {
         senha: true,
       },
@@ -86,24 +176,79 @@ export class UsersService {
   async update(id: number, dto: UpdateUserDto) {
     const usuarioId = this.validateId(id);
 
-    await this.findOne(usuarioId);
+    const usuarioExistente = await this.prisma.user.findUnique({
+      where: { id: usuarioId },
+    });
 
-    const { dataNascimento, senha, ...dados } = dto;
+    if (!usuarioExistente) {
+      throw new NotFoundException('Usuário não encontrado');
+    }
+
+    const { dataNascimento, senha, senhaAtual, novaSenha, planoId, ...dados } =
+      dto;
+
+    let senhaFinalHash: string | undefined = undefined;
+
+    if (senhaAtual && novaSenha) {
+      const senhaValida = await bcrypt.compare(
+        senhaAtual,
+        usuarioExistente.senha,
+      );
+      if (!senhaValida) {
+        throw new BadRequestException('A senha atual informada está incorreta');
+      }
+      senhaFinalHash = await bcrypt.hash(novaSenha, SALT_ROUNDS);
+    } else if (senha) {
+      senhaFinalHash = await bcrypt.hash(senha, SALT_ROUNDS);
+    }
 
     const data: Prisma.UserUpdateInput = {
       ...dados,
       ...(dataNascimento !== undefined && {
         dataNascimento: new Date(dataNascimento),
       }),
-      ...(senha !== undefined && {
-        senha: await bcrypt.hash(senha, SALT_ROUNDS),
+      ...(senhaFinalHash !== undefined && {
+        senha: senhaFinalHash,
       }),
     };
+
+    if (planoId !== undefined) {
+      const plan = await this.prisma.plan.findUnique({
+        where: { id: planoId },
+      });
+      if (!plan || !plan.ativo) {
+        throw new BadRequestException('Plano não encontrado ou inativo');
+      }
+
+      const hoje = new Date();
+      hoje.setUTCHours(0, 0, 0, 0);
+      const dataFim = new Date(hoje);
+      dataFim.setUTCMonth(dataFim.getUTCMonth() + plan.duracaoMeses);
+
+      await this.prisma.subscription.updateMany({
+        where: {
+          usuarioId,
+          status: { not: SubscriptionStatus.CANCELADA },
+        },
+        data: { status: SubscriptionStatus.CANCELADA },
+      });
+
+      await this.prisma.subscription.create({
+        data: {
+          usuarioId,
+          planoId: plan.id,
+          dataInicio: hoje,
+          dataFim,
+          status: SubscriptionStatus.ATIVA,
+        },
+      });
+    }
 
     try {
       return await this.prisma.user.update({
         where: { id: usuarioId },
         data,
+        include: userInclude,
         omit: {
           senha: true,
         },
@@ -113,6 +258,13 @@ export class UsersService {
         error instanceof Prisma.PrismaClientKnownRequestError &&
         error.code === 'P2002'
       ) {
+        const target = error.meta?.target;
+        if (
+          (Array.isArray(target) && target.includes('cpf')) ||
+          (typeof target === 'string' && target.includes('cpf'))
+        ) {
+          throw new ConflictException('Este CPF já está cadastrado');
+        }
         throw new ConflictException('Este e-mail já está cadastrado');
       }
 
@@ -132,4 +284,3 @@ export class UsersService {
     return { message: 'Usuário removido com sucesso' };
   }
 }
-
