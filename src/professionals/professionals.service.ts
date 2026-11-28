@@ -8,13 +8,18 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import type { CreateProfessionalDto } from './dto/create-professional.dto.js';
 import type { UpdateProfessionalDto } from './dto/update-professional.dto.js';
 
-// Traz nome e e-mail do usuário, nunca a senha.
+// Traz nome e e-mail do usuário (sem senha) e os serviços vinculados.
 const include = {
   usuario: {
     select: {
       id: true,
       nome: true,
       email: true,
+    },
+  },
+  servicos: {
+    include: {
+      servico: true,
     },
   },
 };
@@ -69,6 +74,7 @@ export class ProfessionalsService {
     return this.prisma.professional.findMany({
       where: { ativo: true },
       include,
+      orderBy: { id: 'asc' },
     });
   }
 
