@@ -69,7 +69,7 @@ model Professional {
   usuarioId      Int      @unique @map("usuarios_id")
   especializacao String   @db.VarChar(145)
   biografia      String?  @db.Text
-  urlFoto        String?  @db.VarChar(255)
+  urlFoto        String?  @db.LongText
   ativo          Boolean  @default(true)
   criadoEm       DateTime @default(now()) @map("criado_em")
   atualizadoEm   DateTime @updatedAt @map("atualizado_em")

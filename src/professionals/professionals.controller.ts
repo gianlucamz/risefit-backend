@@ -6,6 +6,7 @@ import {
   Patch,
   Param,
   Delete,
+  Query,
   ParseIntPipe,
 } from '@nestjs/common';
 import { ProfessionalsService } from './professionals.service.js';
@@ -28,8 +29,8 @@ export class ProfessionalsController {
   }
 
   @Get()
-  findAll() {
-    return this.professionalsService.findAll();
+  findAll(@Query('incluirInativos') incluirInativos?: string) {
+    return this.professionalsService.findAll(incluirInativos === 'true');
   }
 
   @Get(':id')
