@@ -8,8 +8,8 @@ import {
   Delete,
   Query,
   ParseIntPipe,
-  ParseEnumPipe,
 } from '@nestjs/common';
+import { z } from 'zod';
 import { SubscriptionsService } from './subscriptions.service.js';
 import { createSubscriptionSchema } from './dto/create-subscription.dto.js';
 import type { CreateSubscriptionDto } from './dto/create-subscription.dto.js';
@@ -17,6 +17,10 @@ import { updateSubscriptionSchema } from './dto/update-subscription.dto.js';
 import type { UpdateSubscriptionDto } from './dto/update-subscription.dto.js';
 import { ZodValidationPipe } from '../common/zod-validation.pipe.js';
 import { SubscriptionStatus } from '../generated/prisma/client.js';
+
+const findAllStatusSchema = z
+  .union([z.enum(SubscriptionStatus), z.literal('TODAS')])
+  .optional();
 
 @Controller('subscriptions')
 export class SubscriptionsController {
@@ -34,8 +38,8 @@ export class SubscriptionsController {
   findAll(
     @Query('usuarioId', new ParseIntPipe({ optional: true }))
     usuarioId?: number,
-    @Query('status', new ParseEnumPipe(SubscriptionStatus, { optional: true }))
-    status?: SubscriptionStatus,
+    @Query('status', new ZodValidationPipe(findAllStatusSchema))
+    status?: SubscriptionStatus | 'TODAS',
   ) {
     return this.subscriptionsService.findAll({ usuarioId, status });
   }
