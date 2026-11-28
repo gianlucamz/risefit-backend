@@ -29,6 +29,18 @@ export class SubscriptionsService {
     return d;
   }
 
+  private async syncExpiredSubscriptions() {
+    await this.prisma.subscription.updateMany({
+      where: {
+        status: SubscriptionStatus.ATIVA,
+        dataFim: { lt: this.hoje() },
+      },
+      data: {
+        status: SubscriptionStatus.EXPIRADA,
+      },
+    });
+  }
+
   private present<
     T extends { status: SubscriptionStatus; dataFim: Date | null },
   >(s: T): T {
@@ -51,6 +63,8 @@ export class SubscriptionsService {
   }
 
   async create(dto: CreateSubscriptionDto) {
+    await this.syncExpiredSubscriptions();
+
     const user = await this.prisma.user.findUnique({
       where: { id: dto.usuarioId },
     });
@@ -61,7 +75,7 @@ export class SubscriptionsService {
     });
     if (!plan || !plan.ativo) {
       throw new BadRequestException('Plano não encontrado ou inativo');
-    }
+    } 
 
     const statusFinal = dto.status ?? SubscriptionStatus.PENDENTE;
     const dataInicio = dto.dataInicio ?? this.hoje();
@@ -134,6 +148,8 @@ export class SubscriptionsService {
   }
 
   private async find(id: number) {
+    await this.syncExpiredSubscriptions();
+
     const sub = await this.prisma.subscription.findUnique({
       where: { id },
       include,
